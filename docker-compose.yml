@@ -46,8 +46,12 @@ services:
 
   php:
     build:
+      # Build context is the appliceo-php source so the Dockerfile's COPY .
+      # picks up bin/vendor/ and docker/php/{php.ini,docker-entrypoint.sh}.
+      # Dockerfile lives in the dev-stack repo so we can skip composer
+      # without modifying appliceo-php (which has a no-commit rule).
       context: ./appliceo-php
-      dockerfile: docker/php/Dockerfile
+      dockerfile: ../docker/php/Dockerfile
     env_file:
       - path: ./appliceo-php/.env
         required: false
