@@ -3,27 +3,39 @@
 # them at startup. Idempotent — skips work when artefacts already exist.
 set -euo pipefail
 
+# Note: when a named volume is mounted onto $dir/node_modules, the directory
+# exists but is empty on first run. So we check for a real install marker
+# (.package-lock.json, written by npm install) rather than dir existence.
+needs_install() {
+  local dir="$1"
+  [ ! -f "$dir/node_modules/.package-lock.json" ]
+}
+
 build_if_missing() {
   local dir="$1"
   local marker="$2"
+  if needs_install "$dir"; then
+    echo "[siblings-init] $dir: npm install"
+    (cd "$dir" && npm install --no-audit --no-fund --include=dev)
+  else
+    echo "[siblings-init] $dir node_modules populated — skip install"
+  fi
   if [ -f "$dir/$marker" ]; then
-    echo "[siblings-init] $dir already built ($marker present) — skip"
+    echo "[siblings-init] $dir already built ($marker present) — skip build"
     return 0
   fi
-  echo "[siblings-init] $dir: npm install"
-  (cd "$dir" && npm install --no-audit --no-fund)
   echo "[siblings-init] $dir: npm run build"
   (cd "$dir" && npm run build)
 }
 
 install_only() {
   local dir="$1"
-  if [ -d "$dir/node_modules" ]; then
-    echo "[siblings-init] $dir node_modules present — skip install"
-    return 0
+  if needs_install "$dir"; then
+    echo "[siblings-init] $dir: npm install"
+    (cd "$dir" && npm install --no-audit --no-fund --include=dev)
+  else
+    echo "[siblings-init] $dir node_modules populated — skip install"
   fi
-  echo "[siblings-init] $dir: npm install"
-  (cd "$dir" && npm install --no-audit --no-fund)
 }
 
 build_if_missing /workspace/appliceo-ui dist/index.js

@@ -102,7 +102,9 @@ services:
       - ./appliceo-lease-config:/workspace/appliceo-lease-config
       - ./appliceo-lease-editor:/workspace/appliceo-lease-editor
       - dc_node_modules:/workspace/docuceo/node_modules
-      - dc_vendor:/workspace/docuceo/vendor
+      # vendor/ stays as a bind mount: host's package.json stubs must be visible
+      # to the container, and vendor-rebuild produces text-only artefacts safe
+      # to write back to the host.
       - sib_ui_node_modules:/workspace/appliceo-ui/node_modules
       - sib_cfg_node_modules:/workspace/appliceo-lease-config/node_modules
       - sib_le_node_modules:/workspace/appliceo-lease-editor/node_modules
@@ -117,7 +119,6 @@ volumes:
   api_node_modules:
   le_node_modules:
   dc_node_modules:
-  dc_vendor:
   sib_ui_node_modules:
   sib_cfg_node_modules:
   sib_le_node_modules:
