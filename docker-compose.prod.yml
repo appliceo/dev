@@ -1,0 +1,14 @@
+# Production overlay — stub. Apply via:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# Intended differences from the dev compose (to fill in when you actually deploy):
+#   - NODE_ENV: production for api/lease-editor/docuceo
+#   - No bind mounts of source (use built images instead)
+#   - No siblings-init / vendor-rebuild (build artefacts baked in at image build)
+#   - Real DATABASE_URL pointing at managed Postgres
+#   - Real JWT_SECRET / DOCUSIGN_* (from the host shell, not committed)
+#   - HTTPS reverse proxy (nginx/caddy) in front, not the dev apache config
+#
+# Today: this file only documents the intent. Don't use it to deploy yet.
+
+services: {}

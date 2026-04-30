@@ -97,7 +97,7 @@ CI runs lint + typecheck + unit tests for projects that have them set up. E2E (P
 
 ## Cross-project changes
 
-- The dependency graph is in the root [README](./README.md). When you change a `file:`-linked library (`appliceo-ui`, `appliceo-lease-config`), bump consumers' lockfiles or run `npm install` there too.
+- The dependency graph is in the root [README](./README.md). When you change a `file:`-linked library (`ui`, `lease-config`), bump consumers' lockfiles or run `npm install` there too.
 - DB schema changes in V1 (`appliceo-php`) require checking the migration is idempotent and won't break the live app.
 - DB schema changes in V2 (`appliceo-node`) go through Drizzle migrations.
 

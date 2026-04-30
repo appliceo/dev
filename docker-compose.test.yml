@@ -1,0 +1,12 @@
+# CI / test overlay — stub. Apply via:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up
+#
+# Intended differences from the dev compose:
+#   - Ephemeral postgres + mysql (no named volumes — wipe between runs)
+#   - Skip the dev seed (run only migrations)
+#   - Faster healthcheck intervals
+#   - No HMR / file-watching
+#
+# Today: this file only documents the intent. Don't use it for CI yet.
+
+services: {}

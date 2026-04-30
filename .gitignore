@@ -2,16 +2,17 @@
 # Each sub-project below has its own remote and is cloned independently.
 
 # Sub-project repos — never tracked here
-/appliceo-api/
-/appliceo-design/
-/appliceo-lease-config/
-/appliceo-lease-editor/
+/api/
+/ui/
+/lease-config/
+/lease-editor/
+/lease-editor-native/
 /appliceo-lease-editor-native/
-/appliceo-node/
-/appliceo-php/
-/appliceo-ui/
 /docuceo/
 /EtatDesLieux/
+/appliceo-design/
+/appliceo-node/
+/appliceo-php/
 
 # AI tools
 .claude/
