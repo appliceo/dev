@@ -21,6 +21,7 @@ All services live on the default compose network. Internal DNS uses service name
 ```bash
 # 1. Clone all sibling repos as siblings of this folder.
 #    Idempotent — copies each project's .env.example to .env where missing.
+#    appliceo-php is checked out on `develop` automatically (its working branch).
 bash bin/clone-all.sh           # use bin/clone-all.ps1 on Windows PowerShell
 
 # 2. (Optional) Customize compose-only env (port overrides, MySQL creds, etc.)

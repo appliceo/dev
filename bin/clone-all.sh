@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Clone every Appliceo repo as a sibling of this dev-stack repo.
 # Idempotent: skips repos that already exist; copies .env.example -> .env if missing.
+# For repos with a non-default working branch (appliceo-php uses `develop`),
+# the script also ensures the branch is checked out on existing clones.
 # Usage:  bash bin/clone-all.sh [--with-mobile] [--ssh|--https]
 set -euo pipefail
 
@@ -18,14 +20,14 @@ for a in "$@"; do
   esac
 done
 
-# Repos: one per line "<dir-name> <github-repo-name>"
-# Repos that should retain the appliceo- prefix list it explicitly.
+# Repos: one per line "<dir-name> <github-repo-name> [branch]"
+# Empty branch = use the remote's default. appliceo-php tracks `develop`.
 core_repos="api api
 ui ui
 lease-config lease-config
 lease-editor lease-editor
 docuceo docuceo
-appliceo-php appliceo-php"
+appliceo-php appliceo-php develop"
 
 mobile_repos="lease-editor-native lease-editor-native
 EtatDesLieux etat-des-lieux"
@@ -46,14 +48,27 @@ repo_url() {
 }
 
 clone_one() {
-  local dir="$1" repo="$2"
+  local dir="$1" repo="$2" branch="${3:-}"
   local target="$ROOT/$dir"
   if [ -d "$target/.git" ]; then
     echo "[skip] $dir already cloned"
+    if [ -n "$branch" ]; then
+      local current
+      current="$(git -C "$target" branch --show-current 2>/dev/null || true)"
+      if [ "$current" != "$branch" ]; then
+        echo "[branch] $dir: $current -> $branch"
+        git -C "$target" fetch origin "$branch":"$branch" 2>/dev/null || git -C "$target" fetch origin "$branch"
+        git -C "$target" checkout "$branch"
+      fi
+    fi
     return 0
   fi
-  echo "[clone] $dir <- $(repo_url "$repo")"
-  git clone "$(repo_url "$repo")" "$target"
+  echo "[clone] $dir <- $(repo_url "$repo")${branch:+ (branch: $branch)}"
+  if [ -n "$branch" ]; then
+    git clone --branch "$branch" "$(repo_url "$repo")" "$target"
+  else
+    git clone "$(repo_url "$repo")" "$target"
+  fi
 }
 
 seed_env() {
@@ -67,9 +82,9 @@ seed_env() {
   fi
 }
 
-echo "$repos" | while IFS=' ' read -r dir repo; do
+echo "$repos" | while IFS=' ' read -r dir repo branch; do
   [ -z "$dir" ] && continue
-  clone_one "$dir" "$repo"
+  clone_one "$dir" "$repo" "$branch"
   seed_env "$dir"
 done
 
