@@ -38,8 +38,8 @@ install_only() {
   fi
 }
 
-build_if_missing /workspace/appliceo-ui dist/index.js
-install_only /workspace/appliceo-lease-config
-install_only /workspace/appliceo-lease-editor
+build_if_missing /workspace/ui dist/index.js
+install_only /workspace/lease-config
+install_only /workspace/lease-editor
 
 echo "[siblings-init] done"

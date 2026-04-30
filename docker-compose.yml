@@ -1,4 +1,4 @@
-name: appliceo-dev
+name: appliceo
 
 services:
   postgres:
@@ -79,12 +79,12 @@ services:
     command: ["sh", "/workspace/docker/siblings-init.sh"]
     volumes:
       - ./docker:/workspace/docker:ro
-      - ./appliceo-ui:/workspace/appliceo-ui
-      - ./appliceo-lease-config:/workspace/appliceo-lease-config
-      - ./appliceo-lease-editor:/workspace/appliceo-lease-editor
-      - sib_ui_node_modules:/workspace/appliceo-ui/node_modules
-      - sib_cfg_node_modules:/workspace/appliceo-lease-config/node_modules
-      - sib_le_node_modules:/workspace/appliceo-lease-editor/node_modules
+      - ./ui:/workspace/ui
+      - ./lease-config:/workspace/lease-config
+      - ./lease-editor:/workspace/lease-editor
+      - sib_ui_node_modules:/workspace/ui/node_modules
+      - sib_cfg_node_modules:/workspace/lease-config/node_modules
+      - sib_le_node_modules:/workspace/lease-editor/node_modules
     environment:
       NPM_CONFIG_FUND: "false"
       NPM_CONFIG_AUDIT: "false"
@@ -93,11 +93,11 @@ services:
   api:
     build:
       context: .
-      dockerfile: appliceo-api/Dockerfile.dev
+      dockerfile: api/Dockerfile.dev
     ports:
       - "${PORT_API:-5001}:5001"
     env_file:
-      - path: ./appliceo-api/.env
+      - path: ./api/.env
         required: false
     environment:
       NODE_ENV: development
@@ -108,8 +108,8 @@ services:
       V1_PHP_API_URL: ${V1_PHP_API_URL:-http://apache:80}
       V1_PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
     volumes:
-      - ./appliceo-api:/workspace/appliceo-api
-      - api_node_modules:/workspace/appliceo-api/node_modules
+      - ./api:/workspace/api
+      - api_node_modules:/workspace/api/node_modules
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,7 +117,7 @@ services:
   lease-editor:
     build:
       context: .
-      dockerfile: appliceo-lease-editor/Dockerfile.dev
+      dockerfile: lease-editor/Dockerfile.dev
     ports:
       - "${PORT_LEASE_EDITOR:-3001}:3001"
     environment:
@@ -126,12 +126,12 @@ services:
       PHP_API_URL: ${PHP_API_URL:-http://apache:80}
       PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
     volumes:
-      - ./appliceo-lease-editor:/workspace/appliceo-lease-editor
-      - ./appliceo-ui:/workspace/appliceo-ui
-      - ./appliceo-lease-config:/workspace/appliceo-lease-config
-      - le_node_modules:/workspace/appliceo-lease-editor/node_modules
-      - sib_ui_node_modules:/workspace/appliceo-ui/node_modules
-      - sib_cfg_node_modules:/workspace/appliceo-lease-config/node_modules
+      - ./lease-editor:/workspace/lease-editor
+      - ./ui:/workspace/ui
+      - ./lease-config:/workspace/lease-config
+      - le_node_modules:/workspace/lease-editor/node_modules
+      - sib_ui_node_modules:/workspace/ui/node_modules
+      - sib_cfg_node_modules:/workspace/lease-config/node_modules
     depends_on:
       siblings-init:
         condition: service_completed_successfully
@@ -154,16 +154,16 @@ services:
       PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
     volumes:
       - ./docuceo:/workspace/docuceo
-      - ./appliceo-ui:/workspace/appliceo-ui
-      - ./appliceo-lease-config:/workspace/appliceo-lease-config
-      - ./appliceo-lease-editor:/workspace/appliceo-lease-editor
+      - ./ui:/workspace/ui
+      - ./lease-config:/workspace/lease-config
+      - ./lease-editor:/workspace/lease-editor
       - dc_node_modules:/workspace/docuceo/node_modules
       # vendor/ stays as a bind mount: host's package.json stubs must be visible
       # to the container, and vendor-rebuild produces text-only artefacts safe
       # to write back to the host.
-      - sib_ui_node_modules:/workspace/appliceo-ui/node_modules
-      - sib_cfg_node_modules:/workspace/appliceo-lease-config/node_modules
-      - sib_le_node_modules:/workspace/appliceo-lease-editor/node_modules
+      - sib_ui_node_modules:/workspace/ui/node_modules
+      - sib_cfg_node_modules:/workspace/lease-config/node_modules
+      - sib_le_node_modules:/workspace/lease-editor/node_modules
     depends_on:
       api:
         condition: service_started
