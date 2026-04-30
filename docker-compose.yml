@@ -28,12 +28,13 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
     volumes:
       - mysql_data:/var/lib/mysql
-      # V1 schema + minimal data — auto-loaded on first MySQL boot.
-      # The .gz file is gitignored: copy from a reference clone or grab from
-      # the team. Without it, PHP queries against V1 tables will fail
-      # (e.g. `ap_users.id_utilisateur`). DB + user creation is handled by
-      # the MYSQL_* env vars above, so init.sql is not mounted.
-      - ./appliceo-php/docker/mysql/appliceopjprod.sql.gz:/docker-entrypoint-initdb.d/01-prod-dump.sql.gz:ro
+      # V1 schema (no PII) + one test user — auto-loaded on first MySQL boot,
+      # alphabetical order. Both files are minimal and safe to commit. They
+      # live in the dev-stack repo (this folder) so they're not subject to
+      # appliceo-php's no-commit rule.
+      # DB + user are created by the MYSQL_* env vars above.
+      - ./docker/mysql/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/mysql/02-seed-user.sql:/docker-entrypoint-initdb.d/02-seed-user.sql:ro
       - ./appliceo-php/docker/mysql/conf.d:/etc/mysql/conf.d:ro
     command: --default-authentication-plugin=mysql_native_password
     healthcheck:
@@ -60,6 +61,14 @@ services:
     volumes:
       - ./appliceo-php:/var/www/html
       - ./appliceo-php/migrations:/migrations:ro
+      # Pass JWT_SECRET (and other env vars) through to PHP-FPM workers.
+      # Without this, `getenv('JWT_SECRET')` in bin/common.php returns false
+      # and JWT validation no-ops silently.
+      - ./docker/php-fpm/zz-env.conf:/usr/local/etc/php-fpm.d/zz-env.conf:ro
+      # Canonical dev gestion/config.php — appliceo-php's own config*.php files
+      # are gitignored, so a fresh clone has none. Bind-mounting this lets PHP
+      # boot without manual setup.
+      - ./docker/php/gestion-config.php:/var/www/html/gestion/config.php:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -71,6 +80,9 @@ services:
       - "${PORT_PHP_HTTPS:-8443}:443"
     volumes:
       - ./appliceo-php:/var/www/html
+      # Same canonical config bind-mount as the php service — apache also
+      # serves PHP files (via FPM) so it sees the same gestion/config.php.
+      - ./docker/php/gestion-config.php:/var/www/html/gestion/config.php:ro
       - ./appliceo-php/docker/apache/vhost.conf:/usr/local/apache2/conf/extra/httpd-vhosts.conf:ro
       - ./appliceo-php/docker/apache/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
       - ./appliceo-php/docker/apache/httpd-ssl.conf:/usr/local/apache2/conf/extra/httpd-ssl.conf:ro
