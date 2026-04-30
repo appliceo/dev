@@ -1,0 +1,118 @@
+name: appliceo-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${PORT_POSTGRES:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-appliceo_v2}
+      POSTGRES_USER: ${POSTGRES_USER:-appliceo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-appliceo_dev}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appliceo} -d ${POSTGRES_DB:-appliceo_v2}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  siblings-init:
+    image: node:20-alpine
+    working_dir: /workspace
+    command: ["sh", "/workspace/docker/siblings-init.sh"]
+    volumes:
+      - ./docker:/workspace/docker:ro
+      - ./appliceo-ui:/workspace/appliceo-ui
+      - ./appliceo-lease-config:/workspace/appliceo-lease-config
+      - ./appliceo-lease-editor:/workspace/appliceo-lease-editor
+      - sib_ui_node_modules:/workspace/appliceo-ui/node_modules
+      - sib_cfg_node_modules:/workspace/appliceo-lease-config/node_modules
+      - sib_le_node_modules:/workspace/appliceo-lease-editor/node_modules
+    environment:
+      NPM_CONFIG_FUND: "false"
+      NPM_CONFIG_AUDIT: "false"
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: appliceo-api/Dockerfile.dev
+    ports:
+      - "${PORT_API:-5001}:5001"
+    env_file:
+      - ./appliceo-api/.env
+    environment:
+      PORT: 5001
+      FASTIFY_ADDRESS: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-appliceo}:${POSTGRES_PASSWORD:-appliceo_dev}@postgres:5432/${POSTGRES_DB:-appliceo_v2}
+      CORS_ORIGIN: http://localhost:${PORT_DOCUCEO:-4321}
+      V1_PHP_API_URL: https://dev.appliceo.com
+      V1_PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
+    volumes:
+      - ./appliceo-api:/workspace/appliceo-api
+      - api_node_modules:/workspace/appliceo-api/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  lease-editor:
+    build:
+      context: .
+      dockerfile: appliceo-lease-editor/Dockerfile.dev
+    ports:
+      - "${PORT_LEASE_EDITOR:-3001}:3001"
+    environment:
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+      PHP_API_URL: https://dev.appliceo.com
+      PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
+    volumes:
+      - ./appliceo-lease-editor:/workspace/appliceo-lease-editor
+      - ./appliceo-ui:/workspace/appliceo-ui
+      - ./appliceo-lease-config:/workspace/appliceo-lease-config
+      - le_node_modules:/workspace/appliceo-lease-editor/node_modules
+      - sib_ui_node_modules:/workspace/appliceo-ui/node_modules
+      - sib_cfg_node_modules:/workspace/appliceo-lease-config/node_modules
+    depends_on:
+      siblings-init:
+        condition: service_completed_successfully
+
+  docuceo:
+    build:
+      context: .
+      dockerfile: docuceo/Dockerfile.dev
+    ports:
+      - "${PORT_DOCUCEO:-4321}:4321"
+    env_file:
+      - ./docuceo/.env
+    environment:
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+      MONO: /workspace
+      PUBLIC_API_URL: http://api:5001
+      PUBLIC_PHP_API_URL: https://dev.appliceo.com
+      PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
+    volumes:
+      - ./docuceo:/workspace/docuceo
+      - ./appliceo-ui:/workspace/appliceo-ui
+      - ./appliceo-lease-config:/workspace/appliceo-lease-config
+      - ./appliceo-lease-editor:/workspace/appliceo-lease-editor
+      - dc_node_modules:/workspace/docuceo/node_modules
+      - dc_vendor:/workspace/docuceo/vendor
+      - sib_ui_node_modules:/workspace/appliceo-ui/node_modules
+      - sib_cfg_node_modules:/workspace/appliceo-lease-config/node_modules
+      - sib_le_node_modules:/workspace/appliceo-lease-editor/node_modules
+    depends_on:
+      api:
+        condition: service_started
+      siblings-init:
+        condition: service_completed_successfully
+
+volumes:
+  pg_data:
+  api_node_modules:
+  le_node_modules:
+  dc_node_modules:
+  dc_vendor:
+  sib_ui_node_modules:
+  sib_cfg_node_modules:
+  sib_le_node_modules:

@@ -1,0 +1,60 @@
+# Each project's node_modules — installed inside containers via named volumes
+**/node_modules
+
+# Build outputs
+**/dist
+**/dist-lib
+**/.astro
+**/.next
+**/.turbo
+**/storybook-static
+
+# Logs / caches
+**/.cache
+**/.parcel-cache
+**/.vite
+**/*.log
+**/npm-debug.log*
+
+# VCS
+.git
+**/.git
+
+# IDE / OS
+.vscode
+.idea
+**/.DS_Store
+Thumbs.db
+
+# Docs / planning (heavy, not needed in build context)
+.planning
+**/.planning
+
+# Tooling configs that aren't needed in the container
+.claude
+**/.claude
+.cursor
+**/.cursor
+CLAUDE.md
+**/CLAUDE.md
+
+# Env files — passed via env_file/environment, not COPY'd
+.env
+**/.env
+.env.docker
+**/.env.local
+
+# PHP project — out of scope for the Node containers
+appliceo-php
+
+# Other projects not orchestrated here
+appliceo-node
+appliceo-design
+appliceo-lease-editor-native
+EtatDesLieux
+docuceo-old
+
+# Misc
+**/coverage
+**/test-results
+**/playwright-report

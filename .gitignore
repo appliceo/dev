@@ -1,0 +1,40 @@
+# Root repo = Appliceo dev stack (Docker compose + scripts).
+# Each sub-project below has its own remote and is cloned independently.
+
+# Sub-project repos — never tracked here
+/appliceo-api/
+/appliceo-design/
+/appliceo-lease-config/
+/appliceo-lease-editor/
+/appliceo-lease-editor-native/
+/appliceo-node/
+/appliceo-php/
+/appliceo-ui/
+/docuceo/
+/EtatDesLieux/
+
+# AI tools
+.claude/
+.cursor/
+.cursorrules
+.aider*
+.continue/
+
+# Local planning / scratch
+.planning/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment (user copies .env.docker.example → .env locally)
+.env
+.env.local
+.env.docker
+
+# Node (none expected at root, but defensive)
+node_modules/
