@@ -28,7 +28,12 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./appliceo-php/docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # V1 schema + minimal data — auto-loaded on first MySQL boot.
+      # The .gz file is gitignored: copy from a reference clone or grab from
+      # the team. Without it, PHP queries against V1 tables will fail
+      # (e.g. `ap_users.id_utilisateur`). DB + user creation is handled by
+      # the MYSQL_* env vars above, so init.sql is not mounted.
+      - ./appliceo-php/docker/mysql/appliceopjprod.sql.gz:/docker-entrypoint-initdb.d/01-prod-dump.sql.gz:ro
       - ./appliceo-php/docker/mysql/conf.d:/etc/mysql/conf.d:ro
     command: --default-authentication-plugin=mysql_native_password
     healthcheck:
