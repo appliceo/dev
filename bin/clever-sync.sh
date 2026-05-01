@@ -1,0 +1,345 @@
+#!/usr/bin/env bash
+# Sync env vars to Clever Cloud apps (api + docuceo) from the dev-stack's
+# central config (defaults + clever profile + clever.local.env).
+# Per-key `clever env set` — additive, never wipes addon-injected vars.
+#
+# Usage:  bash bin/clever-sync.sh [--app=api|docuceo|all] [--apply] [--bootstrap] [--force] [--verbose]
+#
+# Modes:
+#   (default)     Dry-run diff for all targeted apps.
+#   --apply       Show diff, prompt [y/N] per app, push if confirmed.
+#   --bootstrap   Pull secret keys from current Clever env into config/clever.local.env.
+#                 Refuses to overwrite existing file unless --force.
+#
+# Requires: clever (logged in), jq, envsubst (gettext), bash 4+.
+set -euo pipefail
+
+# ── ANSI colors ───────────────────────────────────────────
+RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'
+BLUE=$'\033[34m'; GRAY=$'\033[90m'; BOLD=$'\033[1m'; RST=$'\033[0m'
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(dirname "$SCRIPT_DIR")"
+CONFIG="$ROOT/config"
+TEMPLATES="$CONFIG/templates/clever"
+
+# ── App registry ─────────────────────────────────────────
+declare -A APPS=(
+  [api]="app_34a33f74-0ade-4e8b-9f77-3728aad01b85"
+  [docuceo]="app_af24bab1-3f6f-41a7-b9da-a8a05694f787"
+)
+
+# ── Parse flags ──────────────────────────────────────────
+APP_FILTER=all
+APPLY=0
+BOOTSTRAP=0
+FORCE=0
+VERBOSE=0
+for a in "$@"; do
+  case "$a" in
+    --app=*)      APP_FILTER="${a#--app=}" ;;
+    --apply)      APPLY=1 ;;
+    --bootstrap)  BOOTSTRAP=1 ;;
+    --force)      FORCE=1 ;;
+    --verbose|-v) VERBOSE=1 ;;
+    -h|--help)    sed -n '2,14p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *) echo "${RED}unknown flag: $a${RST}" >&2; exit 2 ;;
+  esac
+done
+
+case "$APP_FILTER" in
+  all)         APP_LIST=(api docuceo) ;;
+  api|docuceo) APP_LIST=("$APP_FILTER") ;;
+  *) echo "${RED}unknown app: $APP_FILTER (use api|docuceo|all)${RST}" >&2; exit 2 ;;
+esac
+
+# ── Preflight ────────────────────────────────────────────
+require() {
+  local cmd="$1" hint="$2"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "${RED}❌ $cmd not found.${RST} $hint" >&2
+    exit 3
+  fi
+}
+require clever "Install: https://www.clever-cloud.com/doc/getting-started/cli/"
+require jq "Install: brew install jq"
+require envsubst "Install gettext: brew install gettext"
+
+if ! clever profile >/dev/null 2>&1; then
+  echo "${RED}❌ Not logged in to Clever Cloud.${RST} Run: clever login" >&2
+  exit 3
+fi
+
+# ── Bootstrap mode ───────────────────────────────────────
+if [ "$BOOTSTRAP" = 1 ]; then
+  TARGET="$CONFIG/clever.local.env"
+  if [ -f "$TARGET" ] && [ "$FORCE" = 0 ]; then
+    echo "${RED}❌ $TARGET already exists.${RST} Use --force to overwrite." >&2
+    exit 4
+  fi
+
+  # Allowlist of secret keys per app. Maps legacy → renamed (Clever still holds old names).
+  # Format "TARGET_NAME[:LEGACY_NAME]" — fetches LEGACY first, falls back to TARGET if absent.
+  api_keys=(JWT_SECRET \
+            V1_AUTH_API_KEY:V1_API_KEY \
+            PHP_BASIC_AUTH:V1_PHP_BASIC_AUTH \
+            DOCUSIGN_INTEGRATION_KEY DOCUSIGN_USER_ID DOCUSIGN_ACCOUNT_ID \
+            DOCUSIGN_WEBHOOK_SECRET DOCUSIGN_PRIVATE_KEY)
+  docuceo_keys=(PHP_BASIC_AUTH)
+
+  echo "${BLUE}${BOLD}🔄 Bootstrapping $TARGET from Clever Cloud...${RST}"
+
+  api_id="${APPS[api]}"
+  doc_id="${APPS[docuceo]}"
+  api_json="$(clever env --app "$api_id" --format json)"
+  doc_json="$(clever env --app "$doc_id" --format json)"
+
+  declare -A out
+  fetch() {
+    local json="$1" key="$2"
+    jq -r --arg k "$key" '.env[] | select(.name==$k) | .value' <<< "$json"
+  }
+
+  resolve_key() {
+    # Returns "TARGET_NAME=value" if found (under target or legacy name).
+    local spec="$1" json="$2"
+    local target="${spec%%:*}" legacy=""
+    [[ "$spec" == *":"* ]] && legacy="${spec#*:}"
+    local v=""
+    if [ -n "$legacy" ]; then
+      v="$(fetch "$json" "$legacy")"
+      if [ -n "$v" ]; then
+        echo "  ${BLUE}↻${RST}  renamed: $legacy → $target" >&2
+      fi
+    fi
+    [ -z "$v" ] && v="$(fetch "$json" "$target")"
+    [ -z "$v" ] && return 1
+    printf '%s\n' "$v"
+  }
+
+  for spec in "${api_keys[@]}"; do
+    target="${spec%%:*}"
+    if v="$(resolve_key "$spec" "$api_json")"; then :; else continue; fi
+    if [ "$target" = "DOCUSIGN_PRIVATE_KEY" ]; then
+      mkdir -p "$ROOT/api/keys"
+      pem_path="$ROOT/api/keys/docusign_private.key"
+      if [ ! -f "$pem_path" ]; then
+        if [[ "$v" == *"BEGIN"* ]]; then
+          printf '%s' "$v" | sed 's/\\n/\n/g' > "$pem_path"
+        else
+          printf '%s' "$v" | base64 -d > "$pem_path"
+        fi
+        chmod 600 "$pem_path"
+        echo "  ${GREEN}✅${RST} wrote api/keys/docusign_private.key (decoded from Clever)"
+      else
+        echo "  ${YELLOW}⏭${RST}  api/keys/docusign_private.key already exists; not overwriting"
+      fi
+      continue
+    fi
+    out["$target"]="$v"
+  done
+
+  for spec in "${docuceo_keys[@]}"; do
+    target="${spec%%:*}"
+    if v="$(resolve_key "$spec" "$doc_json")"; then
+      out["$target"]="$v"
+    fi
+  done
+
+  {
+    echo "# Generated by bin/clever-sync.sh --bootstrap on $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "# Production secrets pulled from Clever Cloud apps. Review and edit as needed."
+    echo "# DO NOT COMMIT — this file is gitignored."
+    echo "#"
+    echo "# DocuSign private key was decoded to api/keys/docusign_private.key (if absent)."
+    echo "# Override with DOCUSIGN_PRIVATE_KEY_FILE=... to point elsewhere."
+    echo
+    for k in "${!out[@]}"; do
+      printf '%s=%s\n' "$k" "${out[$k]}"
+    done | sort
+  } > "$TARGET"
+  chmod 600 "$TARGET"
+  echo "${GREEN}${BOLD}✅ Bootstrap complete:${RST} $TARGET (chmod 600)"
+  echo "${BLUE}Review the file before running --apply.${RST}"
+  exit 0
+fi
+
+# ── Sync mode ────────────────────────────────────────────
+if [ ! -f "$CONFIG/profiles/clever.env" ]; then
+  echo "${RED}❌ Missing $CONFIG/profiles/clever.env${RST}" >&2
+  exit 5
+fi
+
+set -a
+# shellcheck source=/dev/null
+. "$CONFIG/defaults.env"
+# shellcheck source=/dev/null
+. "$CONFIG/profiles/clever.env"
+if [ -f "$CONFIG/clever.local.env" ]; then
+  # shellcheck source=/dev/null
+  . "$CONFIG/clever.local.env"
+else
+  echo "${YELLOW}⚠  $CONFIG/clever.local.env missing — secret values will be empty.${RST}"
+  echo "${YELLOW}   Run \`bash bin/clever-sync.sh --bootstrap\` to seed it.${RST}"
+fi
+set +a
+
+# DocuSign key: read PEM, base64-encode, export as DOCUSIGN_PRIVATE_KEY for envsubst.
+DOCUSIGN_PRIVATE_KEY_FILE="${DOCUSIGN_PRIVATE_KEY_FILE:-$ROOT/api/keys/docusign_private.key}"
+case "$DOCUSIGN_PRIVATE_KEY_FILE" in
+  /*) ;;
+  *)  DOCUSIGN_PRIVATE_KEY_FILE="$ROOT/${DOCUSIGN_PRIVATE_KEY_FILE#./}" ;;
+esac
+if [ -f "$DOCUSIGN_PRIVATE_KEY_FILE" ]; then
+  DOCUSIGN_PRIVATE_KEY="$(base64 < "$DOCUSIGN_PRIVATE_KEY_FILE" | tr -d '\n')"
+  export DOCUSIGN_PRIVATE_KEY
+  [ "$VERBOSE" = 1 ] && echo "${GRAY}DocuSign key loaded from $DOCUSIGN_PRIVATE_KEY_FILE (${#DOCUSIGN_PRIVATE_KEY} chars)${RST}"
+else
+  echo "${YELLOW}⚠  DOCUSIGN_PRIVATE_KEY_FILE not found: $DOCUSIGN_PRIVATE_KEY_FILE${RST}"
+fi
+
+truncate_value() {
+  local v="$1"
+  if [ ${#v} -gt 60 ]; then
+    printf '%s…%s (%d chars)' "${v:0:30}" "${v: -10}" "${#v}"
+  else
+    printf '%s' "$v"
+  fi
+}
+
+# Per-app sync logic. Globals via name-pass would be brittle in bash —
+# do everything inline in the loop below.
+echo "${BOLD}🔧 clever-sync — appliceo${RST}"
+if [ "$APPLY" = 1 ]; then
+  echo "Mode: ${BOLD}${GREEN}APPLY${RST} (will prompt before pushing each app)"
+else
+  echo "Mode: ${BOLD}dry-run${RST} (use --apply to push)"
+fi
+echo "Apps: ${APP_LIST[*]}"
+
+global_changes=0
+global_failures=0
+
+for alias in "${APP_LIST[@]}"; do
+  app_id="${APPS[$alias]}"
+  tmpl="$TEMPLATES/$alias.env.tmpl"
+  echo
+  echo "${BOLD}${BLUE}━━━ $alias  ($app_id) ━━━${RST}"
+
+  if [ ! -f "$tmpl" ]; then
+    echo "${RED}❌ Template missing: $tmpl${RST}" >&2
+    global_failures=$(( global_failures + 1 ))
+    continue
+  fi
+
+  # Render desired
+  desired_text="$(envsubst < "$tmpl")"
+  declare -A desired=()
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    k="${line%%=*}"
+    v="${line#*=}"
+    desired["$k"]="$v"
+  done <<< "$desired_text"
+
+  # Fetch current
+  current_json="$(clever env --app "$app_id" --format json 2>/dev/null || echo '{"env":[]}')"
+  declare -A current=()
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    k="$(jq -r '.name' <<< "$entry")"
+    v="$(jq -r '.value' <<< "$entry")"
+    current["$k"]="$v"
+  done < <(jq -c '.env[]' <<< "$current_json")
+
+  # Categorize
+  adds=(); updates=(); matches=(); orphans=(); empties=()
+  all_keys="$(printf '%s\n' "${!desired[@]}" "${!current[@]}" | sort -u)"
+  while IFS= read -r k; do
+    [ -z "$k" ] && continue
+    in_d=0; in_c=0
+    [ -n "${desired[$k]+x}" ] && in_d=1
+    [ -n "${current[$k]+x}" ] && in_c=1
+    if [ "$in_d" = 1 ] && [ -z "${desired[$k]}" ]; then
+      empties+=("$k")
+      continue
+    fi
+    if [ "$in_d" = 1 ] && [ "$in_c" = 0 ]; then
+      adds+=("$k")
+    elif [ "$in_d" = 1 ] && [ "$in_c" = 1 ]; then
+      if [ "${desired[$k]}" = "${current[$k]}" ]; then
+        matches+=("$k")
+      else
+        updates+=("$k")
+      fi
+    elif [ "$in_d" = 0 ] && [ "$in_c" = 1 ]; then
+      orphans+=("$k")
+    fi
+  done <<< "$all_keys"
+
+  # Print diff
+  for k in "${adds[@]}";    do echo "  ${GREEN}🟢 [add]    $k${RST} = $(truncate_value "${desired[$k]}")"; done
+  for k in "${updates[@]}"; do
+    echo "  ${YELLOW}🟡 [update] $k${RST}"
+    echo "       ${GRAY}old:${RST} $(truncate_value "${current[$k]}")"
+    echo "       ${GREEN}new:${RST} $(truncate_value "${desired[$k]}")"
+  done
+  if [ "$VERBOSE" = 1 ]; then
+    for k in "${matches[@]}"; do echo "  ${GRAY}⚪ [match]  $k${RST}"; done
+  fi
+  for k in "${empties[@]}"; do echo "  ${YELLOW}⚠  [empty]  $k${RST} (in template, no value — skipped)"; done
+  for k in "${orphans[@]}"; do echo "  ${RED}🔴 [orphan] $k${RST} (in Clever, not in template)"; done
+
+  n_add=${#adds[@]}; n_upd=${#updates[@]}; n_mat=${#matches[@]}; n_orph=${#orphans[@]}; n_emp=${#empties[@]}
+  echo
+  printf "  Summary: ${GREEN}+%d add${RST}  ${YELLOW}~%d update${RST}  ${GRAY}=%d match${RST}  ${RED}!%d orphan${RST}  ${YELLOW}⚠%d empty${RST}\n" \
+    "$n_add" "$n_upd" "$n_mat" "$n_orph" "$n_emp"
+
+  n_changes=$(( n_add + n_upd ))
+  global_changes=$(( global_changes + n_changes ))
+
+  if [ "$APPLY" != 1 ]; then
+    continue
+  fi
+  if [ "$n_changes" = 0 ]; then
+    echo "  ${GREEN}✅ Nothing to push.${RST}"
+    continue
+  fi
+
+  echo
+  printf "  ${BOLD}Apply %d change(s) to %s? [y/N] ${RST}" "$n_changes" "$alias"
+  read -r answer
+  if [[ ! "$answer" =~ ^[yY]$ ]]; then
+    echo "  ${YELLOW}⏭  Skipped.${RST}"
+    continue
+  fi
+
+  ok=0; fail=0
+  for k in "${adds[@]}" "${updates[@]}"; do
+    if clever env set "$k" "${desired[$k]}" --app "$app_id" >/dev/null 2>&1; then
+      echo "  ${GREEN}✅${RST} $k"
+      ok=$(( ok + 1 ))
+    else
+      echo "  ${RED}❌${RST} $k (clever env set failed)"
+      fail=$(( fail + 1 ))
+    fi
+  done
+  echo
+  if [ "$fail" = 0 ]; then
+    echo "  ${GREEN}${BOLD}✅ Pushed $ok change(s) to $alias.${RST}"
+  else
+    echo "  ${RED}${BOLD}⚠  $ok ok / $fail failed for $alias.${RST}"
+    global_failures=$(( global_failures + fail ))
+  fi
+
+  unset desired current
+done
+
+echo
+if [ "$APPLY" != 1 ] && [ "$global_changes" -gt 0 ]; then
+  echo "${GRAY}Tip: re-run with ${BOLD}--apply${RST}${GRAY} to push.${RST}"
+fi
+echo "${GRAY}Orphan keys are warnings only. Remove manually with:${RST}"
+echo "${GRAY}  clever env rm KEY --app <app-id>${RST}"
+
+exit "$global_failures"

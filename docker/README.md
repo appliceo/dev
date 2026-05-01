@@ -19,22 +19,36 @@ All services live on the default compose network. Internal DNS uses service name
 ## First run
 
 ```bash
-# 1. Clone all sibling repos as siblings of this folder.
-#    Idempotent — copies each project's .env.example to .env where missing.
-#    appliceo-php is checked out on `develop` automatically (its working branch).
+# 1. Clone all sibling repos + render every per-project .env from the central
+#    config/templates/. Idempotent — re-runnable. appliceo-php is checked out on
+#    `develop` automatically. clone-all auto-runs configure.sh at the end.
 bash bin/clone-all.sh           # use bin/clone-all.ps1 on Windows PowerShell
 
-# 2. (Optional) Customize compose-only env (port overrides, MySQL creds, etc.)
-cp .env.docker.example .env
-
-# 3. Drop the DocuSign private key (out-of-band, not in git):
+# 2. Drop the DocuSign private key (out-of-band, not in git):
 #    api/keys/docusign_private.key
 
-# 4. Build & start
+# 3. Build & start
 docker compose up --build
 ```
 
 First start takes 3–8 min — it installs sibling deps into named volumes, runs `vendor:rebuild` for docuceo, and applies all PHP/Postgres migrations. Subsequent `docker compose up` reuses everything.
+
+### Profiles
+
+`bin/configure.sh` (auto-run by `clone-all.sh`) renders `.env` files from `config/templates/` using one of three profiles:
+
+| Profile | What it points at |
+|---|---|
+| `full-local` *(default)* | API + PHP run locally in compose. Browser hits `apache:80` / `api:5001` via container DNS. |
+| `frontends-only` | Frontends local, api + php = `https://api-dev.appliceo.com` + `https://dev.appliceo.com`. Set `PHP_BASIC_AUTH` in `config/local.env`. |
+| `staging` | Everything points at remote dev backends. Useful for sanity-checking against deployed code. |
+
+```bash
+bash bin/configure.sh --profile=frontends-only   # re-render with chosen profile
+bash bin/configure.sh --check                    # exit 1 if any rendered file drifts from current config
+```
+
+User-only secrets (DocuSign, Stripe, basic-auth) go in `config/local.env` (gitignored). See `config/local.env.example`.
 
 ## Test user
 
@@ -100,6 +114,30 @@ PHP_BASIC_AUTH=$(printf '%s' 'user:password' | base64)
 ```
 
 `dev.appliceo.com` enforces HTTP Basic Auth at the `.htaccess` level; ask the team for credentials.
+
+## Pushing config to Clever Cloud
+
+Two apps deploy on Clever today: `api` (`appliceo-api-dev`) and `docuceo`. Their env vars are kept in sync with the same `config/` system, via:
+
+```bash
+# Dry-run: show diff for both apps
+bash bin/clever-sync.sh
+
+# First time on this machine — pull current secrets from Clever into config/clever.local.env (gitignored)
+bash bin/clever-sync.sh --bootstrap
+
+# Push (prompts [y/N] per app)
+bash bin/clever-sync.sh --apply                  # both apps
+bash bin/clever-sync.sh --app=api --apply        # one app
+```
+
+Output legend: 🟢 add · 🟡 update · ⚪ match (`--verbose`) · 🔴 orphan (in Clever, not in template — never auto-removed).
+
+Source order (later wins): `config/defaults.env` → `config/profiles/clever.env` → `config/clever.local.env`. The DocuSign private key is read from `api/keys/docusign_private.key` (override path with `DOCUSIGN_PRIVATE_KEY_FILE` in `clever.local.env`) and base64-encoded at sync time — no inline blob duplication.
+
+Per-app templates live in `config/templates/clever/`. Push uses `clever env set` per-key (additive — never wipes addon vars like `POSTGRESQL_ADDON_*`).
+
+Requirements: `clever` CLI logged in, `jq`, `gettext` (`envsubst`), Bash 4+.
 
 ## Variants (prod, test)
 

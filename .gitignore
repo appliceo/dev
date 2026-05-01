@@ -40,8 +40,9 @@ Thumbs.db
 .env.local
 .env.docker
 
-# Central config — user's secret overrides only
+# Central config — user's secret overrides only (dev + Clever Cloud prod)
 /config/local.env
+/config/clever.local.env
 
 # Node (none expected at root, but defensive)
 node_modules/
