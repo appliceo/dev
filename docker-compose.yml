@@ -126,8 +126,8 @@ services:
       FASTIFY_ADDRESS: 0.0.0.0
       DATABASE_URL: postgresql://${POSTGRES_USER:-appliceo}:${POSTGRES_PASSWORD:-appliceo_dev}@postgres:5432/${POSTGRES_DB:-appliceo_v2}
       CORS_ORIGIN: http://localhost:${PORT_DOCUCEO:-4321}
-      V1_PHP_API_URL: ${V1_PHP_API_URL:-http://apache:80}
-      V1_PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
+      PHP_API_URL: ${PHP_API_URL:-http://apache:80}
+      PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
     volumes:
       - ./api:/workspace/api
       - api_node_modules:/workspace/api/node_modules

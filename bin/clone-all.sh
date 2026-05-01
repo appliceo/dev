@@ -94,6 +94,12 @@ if [ -f "$ROOT/.env.docker.example" ] && [ ! -f "$ROOT/.env" ]; then
   echo "[env] .env <- .env.docker.example"
 fi
 
+# Render per-project config from the central templates (idempotent).
+if [ -x "$SCRIPT_DIR/configure.sh" ]; then
+  echo
+  bash "$SCRIPT_DIR/configure.sh" || echo "[warn] configure.sh failed; you may need to run it manually" >&2
+fi
+
 echo
 echo "Done. Next:"
 echo "  cd $ROOT"
