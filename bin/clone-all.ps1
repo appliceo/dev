@@ -84,6 +84,17 @@ if ((Test-Path $rootEnvExample) -and -not (Test-Path $rootEnv)) {
   Write-Host "[env] .env <- .env.docker.example"
 }
 
+# Render per-project config from the central templates (idempotent).
+$ConfigureScript = Join-Path $ScriptDir 'configure.ps1'
+if (Test-Path $ConfigureScript) {
+  Write-Host ""
+  try {
+    & $ConfigureScript
+  } catch {
+    Write-Warning "[warn] configure.ps1 failed; you may need to run it manually"
+  }
+}
+
 Write-Host ""
 Write-Host "Done. Next:"
 Write-Host "  cd $Root"
