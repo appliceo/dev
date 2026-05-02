@@ -192,12 +192,12 @@ You can run everything locally, or point a consumer at the dev deployment.
 
 | Service | Local (default) | Remote dev |
 |---|---|---|
-| `api` | `http://localhost:5001` | `https://api-dev.appliceo.com/` |
+| `api` | `http://localhost:5001` | `https://api.appliceo.com/` |
 | `appliceo-php` | `https://localhost:8443` (self-signed SSL) | `https://dev.appliceo.com/` (HTTP Basic Auth required) |
 
 > **Basic Auth on `dev.appliceo.com`** is enforced at the `.htaccess` level. Credentials are not in the repo — ask the team. Each request must send `Authorization: Basic <base64(user:pass)>`. App-level JWT/session auth runs on top.
 
-Production URLs (`api.appliceo.com`, `appliceo.com`) are planned but not live.
+`api.appliceo.com` is live (single environment for now). A separate dev/staging environment will be carved off when the first production traffic arrives. PHP `appliceo.com` is planned but not live — V1 still serves at `dev.appliceo.com`.
 
 ### Switching a consumer
 
@@ -209,7 +209,7 @@ PUBLIC_API_URL=http://localhost:5001
 PUBLIC_PHP_API_URL=http://localhost:8443
 
 # ── REMOTE DEV BACKENDS (uncomment to use) ──
-# PUBLIC_API_URL=https://api-dev.appliceo.com
+# PUBLIC_API_URL=https://api.appliceo.com
 # PUBLIC_PHP_API_URL=https://dev.appliceo.com
 # PHP_BASIC_AUTH=base64(user:pass)
 ```

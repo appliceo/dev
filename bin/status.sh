@@ -37,13 +37,11 @@ core_dirs="
 api
 ui
 lease-config
-lease-editor
 docuceo
 appliceo-php
 "
 
 mobile_dirs="
-lease-editor-native
 EtatDesLieux
 "
 

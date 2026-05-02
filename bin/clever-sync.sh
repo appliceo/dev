@@ -25,7 +25,8 @@ TEMPLATES="$CONFIG/templates/clever"
 
 # ── App registry ─────────────────────────────────────────
 declare -A APPS=(
-  [api]="app_34a33f74-0ade-4e8b-9f77-3728aad01b85"
+  [api]="app_84641b70-9b48-460f-883f-d9aa0c13321c"
+  [api-old]="app_34a33f74-0ade-4e8b-9f77-3728aad01b85"
   [docuceo]="app_af24bab1-3f6f-41a7-b9da-a8a05694f787"
 )
 
@@ -48,9 +49,9 @@ for a in "$@"; do
 done
 
 case "$APP_FILTER" in
-  all)         APP_LIST=(api docuceo) ;;
-  api|docuceo) APP_LIST=("$APP_FILTER") ;;
-  *) echo "${RED}unknown app: $APP_FILTER (use api|docuceo|all)${RST}" >&2; exit 2 ;;
+  all)                 APP_LIST=(api docuceo) ;;
+  api|api-old|docuceo) APP_LIST=("$APP_FILTER") ;;
+  *) echo "${RED}unknown app: $APP_FILTER (use api|api-old|docuceo|all)${RST}" >&2; exit 2 ;;
 esac
 
 # ── Preflight ────────────────────────────────────────────
