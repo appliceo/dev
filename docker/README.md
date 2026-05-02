@@ -1,6 +1,8 @@
 # Docker dev stack — Appliceo
 
-One `docker-compose.yml` to run the **whole stack** as containers — Postgres, MySQL, the PHP V1 app (Apache + PHP-FPM), the Fastify API, the lease-editor SPA, and docuceo. Built so Windows contributors don't need WSL, bash, or a Node toolchain on the host — only Docker Desktop. macOS / Linux dev still works through the same setup.
+One `docker-compose.yml` to run the **whole stack** as containers — Postgres, MySQL, the PHP V1 app (Apache + PHP-FPM), the Fastify API, and docuceo (which hosts the lease editor in-tree). Built so Windows contributors don't need WSL, bash, or a Node toolchain on the host — only Docker Desktop. macOS / Linux dev still works through the same setup.
+
+> `appliceo-node` (V2 frontend) is a sibling repo cloned alongside but **not yet wired into this compose stack** — run it locally with `npm run dev` from `appliceo-node/frontend/` for now.
 
 ## What runs
 
@@ -11,8 +13,7 @@ One `docker-compose.yml` to run the **whole stack** as containers — Postgres, 
 | `php`          | (internal)     | `php:8.2-fpm`. Runs PHP V1 migrations on startup.       |
 | `apache`       | 8080 / 8443    | `httpd:2.4` reverse-proxying to `php`                    |
 | `api`          | 5001           | `api` (Fastify, dev mode + HMR)                          |
-| `lease-editor` | 3001           | `lease-editor` (Vite, HMR)                               |
-| `docuceo`      | 4321           | `docuceo` (Astro SSR, HMR)                               |
+| `docuceo`      | 4321           | `docuceo` (Astro SSR, HMR — in-tree lease editor)        |
 
 All services live on the default compose network. Internal DNS uses service names: `api` reaches MySQL via `mysql:3306`, docuceo proxies PHP via `apache:80`, etc.
 
@@ -66,8 +67,7 @@ Login flows in docuceo and the V1 PHP app accept this user. The password complie
 
 When the stack is ready, open:
 
-- http://localhost:4321/fr/ — docuceo (front of the modern stack)
-- http://localhost:3001/ — lease-editor (standalone SPA)
+- http://localhost:4321/fr/ — docuceo (front of the modern stack, with the lease editor mounted as a React island)
 - http://localhost:5001/documentation — API Swagger
 - http://localhost:8080/ — appliceo-php V1 (HTTP)
 - https://localhost:8443/ — appliceo-php V1 (HTTPS, self-signed cert — accept the warning)
@@ -89,7 +89,7 @@ docker compose down                # stop, keep volumes
 docker compose down -v             # stop + wipe volumes (full reset, re-seeds DBs)
 ```
 
-HMR works across bind mounts — edit `lease-editor/src/App.tsx` on the host, the container picks it up and the browser reloads.
+HMR works across bind mounts — edit `docuceo/src/lease-editor/...` on the host, the container picks it up and the browser reloads.
 
 ## Tuning
 
@@ -101,14 +101,13 @@ If your source lives **inside WSL2** (e.g. `\\wsl$\Ubuntu\home\you\code\appliceo
 
 ### Port clashes
 
-Override `PORT_LEASE_EDITOR`, `PORT_DOCUCEO`, `PORT_API`, `PORT_POSTGRES`, `PORT_MYSQL`, `PORT_PHP_HTTP`, `PORT_PHP_HTTPS` in `.env`. Only the host side changes — internal container ports stay fixed.
+Override `PORT_DOCUCEO`, `PORT_API`, `PORT_POSTGRES`, `PORT_MYSQL`, `PORT_PHP_HTTP`, `PORT_PHP_HTTPS` in `.env`. Only the host side changes — internal container ports stay fixed.
 
 ### Pointing at remote backends
 
-By default the lease-editor and docuceo proxies target the local `apache` container. To use the deployed dev backends instead, override in your local `.env`:
+By default the docuceo proxy targets the local `apache` container. To use the deployed dev backends instead, override in your local `.env`:
 
 ```env
-PHP_API_URL=https://dev.appliceo.com         # lease-editor proxy target
 PUBLIC_PHP_API_URL=https://dev.appliceo.com  # docuceo proxy target
 PHP_BASIC_AUTH=$(printf '%s' 'user:password' | base64)
 ```
@@ -117,7 +116,7 @@ PHP_BASIC_AUTH=$(printf '%s' 'user:password' | base64)
 
 ## Pushing config to Clever Cloud
 
-Two apps deploy on Clever today: `api` (`appliceo-api-dev`) and `docuceo`. Their env vars are kept in sync with the same `config/` system, via:
+Two apps deploy on Clever today: `api` and `docuceo`. Their env vars are kept in sync with the same `config/` system, via:
 
 ```bash
 # Dry-run: show diff for both apps
@@ -160,13 +159,13 @@ Source code: bind-mounted from host (so edits hot-reload).
 `docuceo/vendor/`: bind-mounted (host's `package.json` stubs need to be visible inside the container; vendor-rebuild's text-only output is safe to write back).
 `mysql_data`, `pg_data`: named volumes for DB persistence.
 
-Sibling deps (`ui`, `lease-config`, `lease-editor`) get installed once by the `siblings-init` service before lease-editor and docuceo start. The init is idempotent — it skips already-installed packages on subsequent runs.
+Sibling deps (`ui`, `lease-config`) get installed once by the `siblings-init` service before docuceo starts. The init is idempotent — it skips already-installed packages on subsequent runs.
 
 ## Troubleshooting
 
 **`siblings-init` exits with code 1.** Check `docker compose logs siblings-init`. Usually a failed `npm install` — fix the underlying issue and re-run `docker compose up siblings-init`.
 
-**`docuceo` blocked on `vendor-rebuild`.** First start can take a few minutes for the lib build. Tail `docker compose logs -f docuceo` to monitor.
+**`docuceo` blocked on `vendor-rebuild`.** First start can take a few minutes for the `ui` + `lease-config` lib builds. Tail `docker compose logs -f docuceo` to monitor.
 
 **`getaddrinfo ENOTFOUND postgres`.** Cold-start DNS race — already mitigated by a TCP wait in `api/Dockerfile.dev`. If it returns, increase the wait or restart api.
 
