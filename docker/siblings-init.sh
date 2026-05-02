@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds shared sibling packages once so lease-editor and docuceo can resolve
-# them at startup. Idempotent — skips work when artefacts already exist.
+# Builds shared sibling packages once so docuceo can resolve them at startup.
+# Idempotent — skips work when artefacts already exist.
 set -euo pipefail
 
 # Note: when a named volume is mounted onto $dir/node_modules, the directory
@@ -40,6 +40,5 @@ install_only() {
 
 build_if_missing /workspace/ui dist/index.js
 install_only /workspace/lease-config
-install_only /workspace/lease-editor
 
 echo "[siblings-init] done"

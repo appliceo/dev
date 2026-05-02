@@ -18,12 +18,10 @@ $CoreRepos = @(
   @{ Dir='api';          Repo='api';          Branch='' },
   @{ Dir='ui';           Repo='ui';           Branch='' },
   @{ Dir='lease-config'; Repo='lease-config'; Branch='' },
-  @{ Dir='lease-editor'; Repo='lease-editor'; Branch='' },
   @{ Dir='docuceo';      Repo='docuceo';      Branch='' },
   @{ Dir='appliceo-php'; Repo='appliceo-php'; Branch='develop' }
 )
 $MobileRepos = @(
-  @{ Dir='lease-editor-native'; Repo='lease-editor-native'; Branch='' },
   @{ Dir='EtatDesLieux';        Repo='etat-des-lieux';      Branch='' }
 )
 

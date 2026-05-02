@@ -33,10 +33,10 @@ define('SMTP_PASS',   '');
 define('SMTP_SECURE', '');
 
 if (!defined('ENVIRONMENT')) {
-     = isset(['HTTP_HOST']) ? ['HTTP_HOST'] : '';
-    if ( === 'localhost' || strpos(, 'localhost') !== false || strpos(, '127.0.0.1') !== false || strpos(, 'dev.appliceo.com') !== false) {
+    $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+    if ($host === 'localhost' || strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false || strpos($host, 'dev.appliceo.com') !== false || strpos($host, 'apache') !== false) {
         define('ENVIRONMENT', 'development');
-    } elseif (strpos(, 'staging') !== false || strpos(, 'stg.') !== false) {
+    } elseif (strpos($host, 'staging') !== false || strpos($host, 'stg.') !== false) {
         define('ENVIRONMENT', 'staging');
     } else {
         define('ENVIRONMENT', 'production');

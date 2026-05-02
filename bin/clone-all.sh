@@ -25,12 +25,10 @@ done
 core_repos="api api
 ui ui
 lease-config lease-config
-lease-editor lease-editor
 docuceo docuceo
 appliceo-php appliceo-php develop"
 
-mobile_repos="lease-editor-native lease-editor-native
-EtatDesLieux etat-des-lieux"
+mobile_repos="EtatDesLieux etat-des-lieux"
 
 repos="$core_repos"
 if [ "$WITH_MOBILE" = 1 ]; then

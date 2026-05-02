@@ -40,7 +40,7 @@ First start takes 3–8 min — it installs sibling deps into named volumes, run
 | Profile | What it points at |
 |---|---|
 | `full-local` *(default)* | API + PHP run locally in compose. Browser hits `apache:80` / `api:5001` via container DNS. |
-| `frontends-only` | Frontends local, api + php = `https://api-dev.appliceo.com` + `https://dev.appliceo.com`. Set `PHP_BASIC_AUTH` in `config/local.env`. |
+| `frontends-only` | Frontends local, api + php = `https://api.appliceo.com` + `https://dev.appliceo.com`. Set `PHP_BASIC_AUTH` in `config/local.env`. |
 | `staging` | Everything points at remote dev backends. Useful for sanity-checking against deployed code. |
 
 ```bash

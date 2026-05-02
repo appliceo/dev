@@ -102,10 +102,8 @@ services:
       - ./docker:/workspace/docker:ro
       - ./ui:/workspace/ui
       - ./lease-config:/workspace/lease-config
-      - ./lease-editor:/workspace/lease-editor
       - sib_ui_node_modules:/workspace/ui/node_modules
       - sib_cfg_node_modules:/workspace/lease-config/node_modules
-      - sib_le_node_modules:/workspace/lease-editor/node_modules
     environment:
       NPM_CONFIG_FUND: "false"
       NPM_CONFIG_AUDIT: "false"
@@ -135,28 +133,6 @@ services:
       postgres:
         condition: service_healthy
 
-  lease-editor:
-    build:
-      context: .
-      dockerfile: lease-editor/Dockerfile.dev
-    ports:
-      - "${PORT_LEASE_EDITOR:-3001}:3001"
-    environment:
-      NODE_ENV: development
-      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
-      PHP_API_URL: ${PHP_API_URL:-http://apache:80}
-      PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
-    volumes:
-      - ./lease-editor:/workspace/lease-editor
-      - ./ui:/workspace/ui
-      - ./lease-config:/workspace/lease-config
-      - le_node_modules:/workspace/lease-editor/node_modules
-      - sib_ui_node_modules:/workspace/ui/node_modules
-      - sib_cfg_node_modules:/workspace/lease-config/node_modules
-    depends_on:
-      siblings-init:
-        condition: service_completed_successfully
-
   docuceo:
     build:
       context: .
@@ -177,14 +153,12 @@ services:
       - ./docuceo:/workspace/docuceo
       - ./ui:/workspace/ui
       - ./lease-config:/workspace/lease-config
-      - ./lease-editor:/workspace/lease-editor
       - dc_node_modules:/workspace/docuceo/node_modules
       # vendor/ stays as a bind mount: host's package.json stubs must be visible
       # to the container, and vendor-rebuild produces text-only artefacts safe
       # to write back to the host.
       - sib_ui_node_modules:/workspace/ui/node_modules
       - sib_cfg_node_modules:/workspace/lease-config/node_modules
-      - sib_le_node_modules:/workspace/lease-editor/node_modules
     depends_on:
       api:
         condition: service_started
@@ -195,8 +169,6 @@ volumes:
   pg_data:
   mysql_data:
   api_node_modules:
-  le_node_modules:
   dc_node_modules:
   sib_ui_node_modules:
   sib_cfg_node_modules:
-  sib_le_node_modules:
