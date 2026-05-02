@@ -27,8 +27,7 @@ docker compose up --build
 ```
 
 Open:
-- http://localhost:4321/fr/ — docuceo
-- http://localhost:3001/ — lease-editor
+- http://localhost:4321/fr/ — docuceo (with the lease editor mounted as a React island)
 - http://localhost:5001/documentation — api Swagger
 - http://localhost:8080/ — appliceo-php (V1)
 
@@ -47,13 +46,11 @@ Native (non-Docker) workflow on macOS / Linux still works per project — read e
 | Directory | Stack | Status | Description |
 |-----------|-------|--------|-------------|
 | `appliceo-php/` | PHP (no framework), jQuery, MySQL, Docker | **Production (V1)** | Current live app. Lease management, tenants, properties, PDF generation, DocuSign. Branch: `develop`. |
-| `appliceo-node/` | Next.js 16, React 19, Drizzle ORM, PostgreSQL 16, NextAuth v5, TailwindCSS 4 | **In development (V2)** | Full rewrite. Own PostgreSQL DB, English schema. Active code in `frontend/`. Branch: `develop`. |
-| `api/` | Fastify v5, PostgreSQL + Drizzle, Swagger | **v1.0 shipped** | Signing API + auth service (DocuSign + Yousign), envelope state, webhooks. JWT auth with V1 PHP fallback. |
-| `lease-editor/` | Vite 7, React 19, TailwindCSS 4, TanStack Router/Query | **In development** | Config-driven lease form SPA. Standalone build at `/lease-editor/` on PHP domain + React island in docuceo. |
+| `appliceo-node/` | Next.js 16, React 19, Drizzle ORM, PostgreSQL 16, NextAuth v5, TailwindCSS 4 | **In development (V2)** | Full rewrite. Own PostgreSQL DB, English schema. Active code in `frontend/`. Branch: `develop`. **Not yet wired into the dev-stack docker-compose** — run locally with `npm run dev`. |
+| `api/` | Fastify v5, PostgreSQL + Drizzle, Swagger | **v1.0 shipped** | Signing API + auth service (DocuSign chosen — Yousign deprecated), envelope state, webhooks. JWT auth with V1 PHP fallback. |
 | `lease-config/` | Pure TS, Zod 4 | **Stable** | Shared lease types/enums/validation. 9 lease types, 42 enums, V1 adapter (`fromV1` / `toV1`). |
-| `lease-editor-native/` | Expo SDK 54, RN 0.81, Ignite 11.4 | **Early development** | React Native version of the lease editor for signed leases. |
 | `ui/` | React 19, Headless UI (Catalyst pattern), TailwindCSS 4 | **Stable** | Shared UI library: `ThemeProvider`, form components, design tokens, icon system. |
-| `docuceo/` | Astro 6, React 19, TailwindCSS 4, JWT auth | **In development** | Modern frontend shell. Astro SSR with React islands. Auth via api, SSR proxy to PHP. |
+| `docuceo/` | Astro 6, React 19, TailwindCSS 4, JWT auth | **In development** | Modern frontend shell. Astro SSR with React islands. Auth via api, SSR proxy to PHP. Lease editor source lives in-tree at `docuceo/src/lease-editor/`. |
 | `EtatDesLieux/` | Expo SDK 54, RN 0.81, Ignite 11.3, WatermelonDB, MMKV | **In development** | Mobile app for property inspection reports (photos, rooms, offline-first). |
 | `appliceo-design/` | HTML, CSS reference assets | **Reference** | Color palette, design token reference, examples. |
 
@@ -68,15 +65,13 @@ Target: every project under the `appliceo` GitHub org. A few are still in flight
 | Project | `origin` | Notes |
 |---|---|---|
 | dev-stack (this folder) | `appliceo/dev` | Holds `docker-compose.yml` + scripts |
-| `api` | `appliceo/api` | Plus a Clever Cloud push-only remote `appliceo-api-dev` (independent of GitHub) |
+| `api` | `appliceo/api` | Clever Cloud auto-deploy from GitHub |
 | `ui` | `appliceo/ui` | |
 | `lease-config` | `appliceo/lease-config` | |
-| `lease-editor` | `appliceo/lease-editor` | |
-| `docuceo` | `appliceo/docuceo` | |
+| `docuceo` | `appliceo/docuceo` | Clever Cloud auto-deploy from GitHub |
 | `appliceo-php` | `appliceo/appliceo-php` | Kept `appliceo-` prefix (legacy V1) |
 | `appliceo-node` | `appliceo/appliceo-node` | Kept `appliceo-` prefix; not integrated into root compose yet |
 | `EtatDesLieux` | `appliceo/etat-des-lieux` | |
-| `lease-editor-native` | *not in git — local only* | Project on hold |
 | `appliceo-design` | *not in git — local only* | Reference assets, intentionally local |
 
 ---
@@ -150,24 +145,22 @@ Two distinct databases. They no longer share a schema.
 ## Dependency graph
 
 ```
-lease-config ──→ lease-editor    (file:)
-                      ──→ docuceo                   (file:)
+lease-config ──→ docuceo                   (file:)
+              ──→ appliceo-node/frontend   (file:, planned)
 
-ui          ──→ lease-editor     (file:)
-                     ──→ docuceo                    (file:)
-                     ──→ appliceo-node/frontend     (file:)
-
-lease-editor ──→ docuceo                   (React island)
-                      ──→ appliceo-php              (static build at /lease-editor/)
+ui           ──→ docuceo                   (file:)
+              ──→ appliceo-node/frontend   (file:)
 
 api          ──→ docuceo                   (JWT auth)
-                      ──→ appliceo-php              (signing endpoints + V1 credential verify via HTTP bridge)
+              ──→ appliceo-php             (signing endpoints + V1 credential verify via HTTP bridge)
 
-docuceo               ──→ api              (JWT login/register)
-                      ──→ appliceo-php              (SSR proxy for lease data, JWT in X-Authorization)
+docuceo      ──→ api                       (JWT login/register)
+              ──→ appliceo-php             (SSR proxy for lease data, JWT in X-Authorization)
 ```
 
 `file:` arrows mean an `npm` dependency installed via local path. After changes in a library, the consumer needs `npm install` (or `npm rebuild`) again.
+
+The lease editor used to be a separate `lease-editor/` repo; on 2026-05-02 its source was collapsed into `docuceo/src/lease-editor/`. The static SPA path on the PHP V1 domain was retired in the same pass — `docuceo` is now the only home for the lease editor.
 
 ---
 
@@ -222,9 +215,7 @@ Env-var name varies by stack:
 |---|---|
 | `docuceo` | `PUBLIC_API_URL`, `PUBLIC_PHP_API_URL`, `PHP_BASIC_AUTH` |
 | `appliceo-node/frontend` | `NEXT_PUBLIC_BACKEND_URL`, `DATABASE_URL`, `AUTH_SECRET`, `NEXT_PUBLIC_BASE_URL` |
-| `lease-editor` | Vite proxy (no client env) |
 | `EtatDesLieux` | `API_URL` (or `app/config/config.dev.ts` / `config.prod.ts`) |
-| `lease-editor-native` | `EXPO_PUBLIC_API_URL` |
 
 ---
 
@@ -269,14 +260,12 @@ For each, `cd` into the directory and read its `README.md`. Short pointers:
 | Project | One-liner |
 |---|---|
 | `appliceo-php` | `docker-compose up -d` → open `https://localhost:8443`. |
-| `api` | `npm install` → `cp .env.example .env` → fill DocuSign/Yousign creds → `npm run dev` (port 5001). |
+| `api` | `npm install` → `cp .env.example .env` → fill DocuSign creds → `npm run dev` (port 5001). |
 | `appliceo-node` | `cd frontend && npm install` → `docker compose up -d` (Postgres) → `npm run db:push` → `npm run dev` (port 3000). |
 | `docuceo` | `npm install` → `cp .env.example .env` → `npm run dev:local` (port 4321). Needs api + php running, or use `dev:remote`. |
-| `lease-editor` | `npm install` → `npm run dev` (port 3001). |
 | `lease-config` | `npm install` → `npm test`. Library only, no dev server. |
 | `ui` | `npm install` → `npm run dev` (watch build) and/or `npm run storybook` (port 6007). |
 | `EtatDesLieux` | `npm install --legacy-peer-deps` → `npm run start`. Needs Expo dev client build for full features. |
-| `lease-editor-native` | `npm install --legacy-peer-deps` → `npm run web` (or `ios`, `android`). |
 
 ---
 
@@ -292,8 +281,6 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for code-style rules, commit convention
 - [appliceo-php/README.md](./appliceo-php/README.md)
 - [appliceo-node/README.md](./appliceo-node/README.md)
 - [ui/README.md](./ui/README.md)
-- [lease-editor/README.md](./lease-editor/README.md)
 - [lease-config/README.md](./lease-config/README.md)
-- [lease-editor-native/README.md](./lease-editor-native/README.md)
 - [docuceo/README.md](./docuceo/README.md)
 - [EtatDesLieux/README.md](./EtatDesLieux/README.md)
