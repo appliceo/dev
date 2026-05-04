@@ -1,7 +1,8 @@
 # Clone every Appliceo repo as a sibling of this dev-stack repo.
 # Idempotent: skips repos that already exist; copies .env.example -> .env if missing.
-# For repos with a non-default working branch (appliceo-php uses `develop`),
-# the script also ensures the branch is checked out on existing clones.
+# For repos that pin a working branch (api, docuceo and appliceo-php all
+# track `develop`), the script also ensures the branch is checked out on
+# existing clones.
 # Usage:  pwsh bin/clone-all.ps1 [-WithMobile] [-Proto ssh|https]
 [CmdletBinding()]
 param(
@@ -13,12 +14,13 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $PSCommandPath
 $Root      = Split-Path -Parent $ScriptDir
 
-# (Dir, Repo, Branch). Empty branch = remote default. appliceo-php tracks develop.
+# (Dir, Repo, Branch). Empty branch = remote default.
+# api, docuceo and appliceo-php track develop (CC auto-deploys watch develop).
 $CoreRepos = @(
-  @{ Dir='api';          Repo='api';          Branch='' },
+  @{ Dir='api';          Repo='api';          Branch='develop' },
   @{ Dir='ui';           Repo='ui';           Branch='' },
   @{ Dir='lease-config'; Repo='lease-config'; Branch='' },
-  @{ Dir='docuceo';      Repo='docuceo';      Branch='' },
+  @{ Dir='docuceo';      Repo='docuceo';      Branch='develop' },
   @{ Dir='appliceo-php'; Repo='appliceo-php'; Branch='develop' }
 )
 $MobileRepos = @(
