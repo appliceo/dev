@@ -1,0 +1,29 @@
+# Default to LF for text — keeps Dockerfile + shell scripts happy on
+# Windows where CRLF would otherwise sneak in.
+* text=auto eol=lf
+
+# Explicit LF for shell + Docker
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile* text eol=lf
+
+# Windows-only scripts keep CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.zip binary
+*.tar binary
+*.gz binary

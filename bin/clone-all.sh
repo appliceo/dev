@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Clone every Appliceo repo as a sibling of this dev-stack repo.
 # Idempotent: skips repos that already exist; copies .env.example -> .env if missing.
-# For repos with a non-default working branch (appliceo-php uses `develop`),
-# the script also ensures the branch is checked out on existing clones.
+# For repos that pin a working branch (api, docuceo and appliceo-php all
+# track `develop`), the script also ensures the branch is checked out on
+# existing clones.
 # Usage:  bash bin/clone-all.sh [--with-mobile] [--ssh|--https]
 set -euo pipefail
 
@@ -21,11 +22,12 @@ for a in "$@"; do
 done
 
 # Repos: one per line "<dir-name> <github-repo-name> [branch]"
-# Empty branch = use the remote's default. appliceo-php tracks `develop`.
-core_repos="api api
+# Empty branch = use the remote's default.
+# api, docuceo and appliceo-php track `develop` (CC auto-deploys watch develop).
+core_repos="api api develop
 ui ui
 lease-config lease-config
-docuceo docuceo
+docuceo docuceo develop
 appliceo-php appliceo-php develop"
 
 mobile_repos="EtatDesLieux etat-des-lieux"
