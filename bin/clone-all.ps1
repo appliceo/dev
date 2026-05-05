@@ -15,10 +15,12 @@ $ScriptDir = Split-Path -Parent $PSCommandPath
 $Root      = Split-Path -Parent $ScriptDir
 
 # (Dir, Repo, Branch). Empty branch = remote default.
-# api, docuceo and appliceo-php track develop (CC auto-deploys watch develop).
+# api, ui, docuceo and appliceo-php track develop (Clever Cloud auto-deploys
+# watch develop on the deployable apps; main is reserved for prod cutovers).
+# lease-config has no develop branch — it tracks main.
 $CoreRepos = @(
   @{ Dir='api';          Repo='api';          Branch='develop' },
-  @{ Dir='ui';           Repo='ui';           Branch='' },
+  @{ Dir='ui';           Repo='ui';           Branch='develop' },
   @{ Dir='lease-config'; Repo='lease-config'; Branch='' },
   @{ Dir='docuceo';      Repo='docuceo';      Branch='develop' },
   @{ Dir='appliceo-php'; Repo='appliceo-php'; Branch='develop' }

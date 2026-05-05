@@ -63,7 +63,11 @@ for m in "${mappings[@]}"; do
     echo "  [miss] $src — template missing, skip" >&2
     continue
   fi
-  rendered="$(envsubst < "$src")"
+  # Restrict envsubst to ${VAR} placeholders explicitly used in this template.
+  # Without an allowlist, envsubst also eats `$host`, `$_SERVER`, etc. — fatal
+  # for the PHP config template, which contains real PHP variables.
+  vars="$(grep -oE '\$\{[A-Z_][A-Z0-9_]*\}' "$src" | sort -u | tr '\n' ' ')"
+  rendered="$(envsubst "$vars" < "$src")"
   if [ "$CHECK" = 1 ]; then
     if [ -f "$dst" ] && [ "$(cat "$dst")" = "$rendered" ]; then
       echo "  [ok]    $dst"
