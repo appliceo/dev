@@ -123,7 +123,7 @@ services:
       PORT: 5001
       FASTIFY_ADDRESS: 0.0.0.0
       DATABASE_URL: postgresql://${POSTGRES_USER:-appliceo}:${POSTGRES_PASSWORD:-appliceo_dev}@postgres:5432/${POSTGRES_DB:-appliceo_v2}
-      CORS_ORIGIN: http://localhost:${PORT_DOCUCEO:-4321}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
       PHP_API_URL: ${PHP_API_URL:-http://apache:80}
       PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
     volumes:
@@ -143,12 +143,18 @@ services:
       - path: ./docuceo/.env
         required: false
     environment:
-      NODE_ENV: development
+      # NODE_ENV intentionally NOT set here. `astro dev` (the container's
+      # entrypoint command) selects dev mode itself; the source code uses
+      # `import.meta.env.DEV` for any dev-branching. Setting NODE_ENV=development
+      # here used to leak into `npm run vendor:rebuild` inside the container,
+      # poisoning vendor/ui with jsxDEV() calls that crash prod.
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
       MONO: /workspace
       PUBLIC_API_URL: http://api:5001
+      PUBLIC_API_BROWSER_URL: ${PUBLIC_API_BROWSER_URL:-http://localhost:5001}
       PUBLIC_PHP_API_URL: ${PUBLIC_PHP_API_URL:-http://apache:80}
       PHP_BASIC_AUTH: ${PHP_BASIC_AUTH:-}
+      PUBLIC_LEASE_SIGNING_ENABLED: ${PUBLIC_LEASE_SIGNING_ENABLED:-false}
     volumes:
       - ./docuceo:/workspace/docuceo
       - ./ui:/workspace/ui
