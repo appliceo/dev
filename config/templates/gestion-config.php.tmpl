@@ -34,7 +34,7 @@ define('SMTP_SECURE', '');
 
 if (!defined('ENVIRONMENT')) {
     $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-    if ($host === 'localhost' || strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false || strpos($host, 'dev.appliceo.com') !== false) {
+    if ($host === 'localhost' || strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false || strpos($host, 'dev.appliceo.com') !== false || strpos($host, 'apache') !== false) {
         define('ENVIRONMENT', 'development');
     } elseif (strpos($host, 'staging') !== false || strpos($host, 'stg.') !== false) {
         define('ENVIRONMENT', 'staging');
