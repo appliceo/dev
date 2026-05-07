@@ -13,6 +13,7 @@
 /appliceo-design/
 /appliceo-node/
 /appliceo-php/
+/e2e/
 
 # Local nested dev-stack clone used for fresh-clone testing
 /dev/
@@ -44,5 +45,9 @@ Thumbs.db
 /config/local.env
 /config/clever.local.env
 
+# Service-account / signing JSONs (Play Store, etc.) — never commit
+/keys/
+
 # Node (none expected at root, but defensive)
 node_modules/
+test-results
