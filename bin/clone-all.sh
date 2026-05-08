@@ -30,7 +30,8 @@ core_repos="api api develop
 ui ui develop
 lease-config lease-config
 docuceo docuceo develop
-appliceo-php appliceo-php develop"
+appliceo-php appliceo-php develop
+e2e e2e"
 
 mobile_repos="EtatDesLieux etat-des-lieux"
 

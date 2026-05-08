@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Continue'
 $ScriptDir = Split-Path -Parent $PSCommandPath
 $Root      = Split-Path -Parent $ScriptDir
 
-$CoreDirs   = @('.', 'api', 'ui', 'lease-config', 'docuceo', 'appliceo-php')
+$CoreDirs   = @('.', 'api', 'ui', 'lease-config', 'docuceo', 'appliceo-php', 'e2e')
 $MobileDirs = @('EtatDesLieux')
 $Dirs       = if ($WithMobile) { $CoreDirs + $MobileDirs } else { $CoreDirs }
 
