@@ -23,7 +23,8 @@ $CoreRepos = @(
   @{ Dir='ui';           Repo='ui';           Branch='develop' },
   @{ Dir='lease-config'; Repo='lease-config'; Branch='' },
   @{ Dir='docuceo';      Repo='docuceo';      Branch='develop' },
-  @{ Dir='appliceo-php'; Repo='appliceo-php'; Branch='develop' }
+  @{ Dir='appliceo-php'; Repo='appliceo-php'; Branch='develop' },
+  @{ Dir='e2e';          Repo='e2e';          Branch='' }
 )
 $MobileRepos = @(
   @{ Dir='EtatDesLieux';        Repo='etat-des-lieux';      Branch='' }

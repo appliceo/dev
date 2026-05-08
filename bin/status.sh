@@ -39,6 +39,7 @@ ui
 lease-config
 docuceo
 appliceo-php
+e2e
 "
 
 mobile_dirs="
