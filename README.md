@@ -45,9 +45,9 @@ Native (non-Docker) workflow on macOS / Linux still works per project — read e
 
 | Directory | Stack | Status | Description |
 |-----------|-------|--------|-------------|
-| `appliceo-php/` | PHP (no framework), jQuery, MySQL, Docker | **Production (V1)** | Current live app. Lease management, tenants, properties, PDF generation, DocuSign. Branch: `develop`. |
+| `appliceo-php/` | PHP (no framework), jQuery, MySQL, Docker | **Production (V1)** | Current live app. Lease management, tenants, properties, PDF generation. **Signed-lease workflow migrated to docuceo — PHP signed-lease code is FROZEN.** Branch: `develop`. |
 | `appliceo-node/` | Next.js 16, React 19, Drizzle ORM, PostgreSQL 16, NextAuth v5, TailwindCSS 4 | **In development (V2)** | Full rewrite. Own PostgreSQL DB, English schema. Active code in `frontend/`. Branch: `develop`. **Not yet wired into the dev-stack docker-compose** — run locally with `npm run dev`. |
-| `api/` | Fastify v5, PostgreSQL + Drizzle, Swagger | **v1.0 shipped** | Signing API + auth service (DocuSign chosen — Yousign deprecated), envelope state, webhooks. JWT auth with V1 PHP fallback. |
+| `api/` | Fastify v5, PostgreSQL + Drizzle, Swagger | **v1.0 shipped** | Signing API + auth service. DocuSign-backed envelope creation, state, webhooks. JWT auth with V1 PHP fallback. **Account/identity = canonical source of truth here**; PHP `ap_users` is legacy fallback. |
 | `lease-config/` | Pure TS, Zod 4 | **Stable** | Shared lease types/enums/validation. 9 lease types, 42 enums, V1 adapter (`fromV1` / `toV1`). |
 | `ui/` | React 19, Headless UI (Catalyst pattern), TailwindCSS 4 | **Stable** | Shared UI library: `ThemeProvider`, form components, design tokens, icon system. |
 | `docuceo/` | Astro 6, React 19, TailwindCSS 4, JWT auth | **In development** | Modern frontend shell. Astro SSR with React islands. Auth via api, SSR proxy to PHP. Lease editor source lives in-tree at `docuceo/src/lease-editor/`. |
@@ -168,14 +168,16 @@ The lease editor used to be a separate `lease-editor/` repo; on 2026-05-02 its s
 
 ```
 Browser → docuceo (Astro SSR)
-  ├─ Login/Register → api (Fastify) → JWT issued
-  │    └─ V1 fallback: api → HTTP POST → appliceo-php /api/auth/verify
+  ├─ Login/Register → api (Fastify) — canonical source of truth for accounts (ap_auth_users)
+  │    └─ V1 fallback (legacy): api → HTTP POST → appliceo-php /api/auth/verify
   │         └─ PHP verifies credentials in ap_users (bcrypt + SHA512)
-  │         └─ On success: user auto-migrated to ap_auth_users (PG)
+  │         └─ On success: user auto-migrated to ap_auth_users; PHP becomes read-only for that account
   ├─ Lease data → docuceo SSR proxy → appliceo-php (JWT via X-Authorization header)
   │    └─ PHP jwt-auth.php validates JWT, sets session, returns data
   └─ JWT stored in localStorage + is_authenticated cookie for SSR middleware
 ```
+
+**Forward shape:** account/identity stays in api. Legacy PHP `ap_users` will be sunset alongside V1. Multi-profile / multi-role refactor (one account → tenant + landlord + accountant + …, no email-as-unique-id) kicks off PHP-side first; api + docuceo follow.
 
 ---
 
@@ -234,9 +236,9 @@ Env-var name varies by stack:
 
 ## Integrations
 
-- **DocuSign** — electronic lease signing (JWT auth with RSA keys), via `api`.
-- **Yousign** — alternative signing provider, via `api`.
-- **Stripe** — subscription management (V1 has `ap_formules` + `ap_users_formules`).
+- **DocuSign** — electronic lease signing (JWT auth with RSA keys), via `api`. Yousign provider exists in `api/` but is deprecated since 2026-04-28; deletion queued for api v1.1.
+- **Stripe** — subscription management (V1 has `ap_formules` + `ap_users_formules`). Forward plan: absorb into `api/` so all clients consume one source.
+- **AR24** (eIDAS LRE) — registered mail delivery; planned to live in `api/` alongside DocuSign / Stripe.
 - **Email** — transactional emails (notices, receipts, invoices, revision alerts).
 
 ---
