@@ -32,6 +32,12 @@ define('SMTP_USER',   '');
 define('SMTP_PASS',   '');
 define('SMTP_SECURE', '');
 
+// Mailgun — used by Appliceo\EnvoiMail. Real key minted on rotation day
+// (currently empty in dev SOPS; OVH config.php overrides with prod key).
+define('MAILGUN_API_KEY',  '${MAILGUN_API_KEY}');
+define('MAILGUN_DOMAIN',   '${MAILGUN_DOMAIN}');
+define('MAILGUN_BASE_URL', '${MAILGUN_BASE_URL}');
+
 if (!defined('ENVIRONMENT')) {
     $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
     if ($host === 'localhost' || strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false || strpos($host, 'dev.appliceo.com') !== false || strpos($host, 'apache') !== false) {

@@ -10,6 +10,15 @@ ROOT="$(dirname "$SCRIPT_DIR")"
 CONFIG="$ROOT/config"
 TEMPLATES="$CONFIG/templates"
 
+# Self-install the committed git hooks (idempotent — sets core.hooksPath once).
+if [ -d "$ROOT/hooks" ] && [ -x "$ROOT/hooks/pre-commit" ]; then
+  current_hooks=$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)
+  if [ "$current_hooks" != "hooks" ]; then
+    git -C "$ROOT" config core.hooksPath hooks
+    echo "[hooks] core.hooksPath set to hooks/ (pre-commit guardrails active)"
+  fi
+fi
+
 PROFILE=full-local
 CHECK=0
 for a in "$@"; do
@@ -28,12 +37,44 @@ if [ ! -f "$PROFILE_FILE" ]; then
   exit 2
 fi
 
-# Source defaults → profile → local (if present). set -a auto-exports.
+# Source defaults → profile → SOPS-encrypted dev secrets → local.env override.
+# set -a auto-exports each sourced file's KEY=VALUE assignments.
 set -a
 # shellcheck source=/dev/null
 . "$CONFIG/defaults.env"
 # shellcheck source=/dev/null
 . "$PROFILE_FILE"
+
+# Inject SOPS-decrypted dev secrets, if available. Skipped gracefully when:
+#   - sops binary not installed (fresh clone)
+#   - user has no age key yet (pre-bootstrap)
+#   - secrets file missing
+# That keeps a fresh clone runnable up to the warning at the bottom.
+SECRETS_FILE="$CONFIG/secrets.dev.sops.yaml"
+if [ -f "$SECRETS_FILE" ] && command -v sops >/dev/null 2>&1 \
+    && [ -r "${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" ]; then
+  # Decrypt to dotenv, then export each KEY=value line directly via `export`.
+  # We do NOT `source` because sops emits unquoted values; a value containing
+  # spaces (e.g. "-----BEGIN RSA PRIVATE KEY-----") would make bash try to run
+  # "RSA" as a command. `export "KEY=val"` is space-safe.
+  # Multi-line YAML values (PEMs, certs) come out with literal `\n` escapes in
+  # the dotenv format — we skip them; they get rendered to files below via
+  # `sops --extract` which preserves real newlines.
+  while IFS= read -r line; do
+    case "$line" in
+      [A-Z_]*=*)
+        key="${line%%=*}"
+        val="${line#*=}"
+        case "$val" in
+          *'\n'*) continue ;;   # multi-line value — handled by file render
+        esac
+        export "$key=$val"
+        ;;
+    esac
+  done < <(SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" \
+             sops -d --output-type=dotenv "$SECRETS_FILE" 2>/dev/null)
+fi
+
 if [ -f "$CONFIG/local.env" ]; then
   # shellcheck source=/dev/null
   . "$CONFIG/local.env"
@@ -81,6 +122,67 @@ for m in "${mappings[@]}"; do
     echo "  [write] $dst"
   fi
 done
+
+# ---------------------------------------------------------------------------
+# Multi-line key material — rendered as raw files (no envsubst, no escaping).
+# Sources values directly from SOPS via `sops --extract` so PEM newlines
+# survive intact. Silently skips any key not present in SOPS yet.
+# ---------------------------------------------------------------------------
+render_sops_key_to_file() {
+  local var="$1" dest="$2" mode="$3"
+  [ -f "$SECRETS_FILE" ] || return 0
+  [ -r "${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" ] || return 0
+  local tmp; tmp="$(mktemp -t appliceo-key.XXXXXX)"
+  if SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" \
+       sops -d --extract "[\"$var\"]" "$SECRETS_FILE" > "$tmp" 2>/dev/null \
+     && [ -s "$tmp" ]; then
+    if [ "$CHECK" = 1 ]; then
+      if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
+        echo "  [ok]    $dest"
+      else
+        echo "  [drift] $dest" >&2
+        drift=1
+      fi
+    else
+      mkdir -p "$(dirname "$dest")"
+      mv "$tmp" "$dest"
+      chmod "$mode" "$dest" 2>/dev/null || true
+      echo "  [write] $dest ($var)"
+    fi
+  fi
+  rm -f "$tmp"
+}
+
+render_sops_key_to_file DOCUSIGN_PRIVATE_KEY "$ROOT/api/keys/docusign_private.key" 600
+
+# ---------------------------------------------------------------------------
+# Public keys — not secret, kept plaintext per env at config/keys/<env>/.
+# Picks "dev" by default (matches the SOPS file currently sourced above).
+# Per-profile env mapping comes in Phase 5 (prod cutover).
+# ---------------------------------------------------------------------------
+SECRETS_ENV=dev
+copy_public_key() {
+  local name="$1" dest="$2"
+  local src="$CONFIG/keys/$SECRETS_ENV/$name"
+  if [ ! -f "$src" ]; then
+    return 0
+  fi
+  if [ "$CHECK" = 1 ]; then
+    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+      echo "  [ok]    $dest"
+    else
+      echo "  [drift] $dest" >&2
+      drift=1
+    fi
+  else
+    mkdir -p "$(dirname "$dest")"
+    cp "$src" "$dest"
+    chmod 644 "$dest" 2>/dev/null || true
+    echo "  [write] $dest (← $src)"
+  fi
+}
+
+copy_public_key docusign_public.key "$ROOT/api/keys/docusign_public.key"
 
 if [ "$CHECK" = 1 ]; then
   [ "$drift" = 0 ] && echo "in sync" || { echo "drift detected" >&2; exit 1; }

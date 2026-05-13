@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pre-commit guardrails for the Appliceo monorepo.
+# Activated via:  git config core.hooksPath hooks
+# (bin/configure.sh does this automatically on first run.)
+#
+# Blocks:
+#   1. Any staged file matching config/secrets.prod.*  (prod secrets must NEVER touch git)
+#   2. Any staged config/secrets.*.yaml that is NOT SOPS-encrypted
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+[ -n "$staged" ] || exit 0
+
+fail=0
+
+# Rule 1 — prod secrets never committed.
+while IFS= read -r f; do
+  case "$f" in
+    config/secrets.prod.*)
+      echo "🛑 refusing to commit $f — prod secrets are gitignored by design." >&2
+      echo "   If this file got staged, run: git restore --staged $f" >&2
+      fail=1
+      ;;
+  esac
+done <<< "$staged"
+
+# Rule 2 — any staged SOPS file must be encrypted (must contain 'sops:' key block).
+while IFS= read -r f; do
+  case "$f" in
+    config/secrets.*.sops.yaml)
+      if [ -f "$f" ] && ! grep -q '^sops:' "$f"; then
+        echo "🛑 refusing to commit $f — file is NOT SOPS-encrypted." >&2
+        echo "   Encrypt it: SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops --encrypt --in-place $f" >&2
+        fail=1
+      fi
+      ;;
+  esac
+done <<< "$staged"
+
+exit $fail

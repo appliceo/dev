@@ -218,6 +218,25 @@ else
 fi
 echo "Apps: ${APP_LIST[*]}"
 
+# Until --env dev|prod lands (Phase 5 of SECRETS-HARDENING-2026-05-13.md),
+# clever-sync pushes DEV values from config/secrets.dev.sops.yaml + the
+# rendered files to whatever CC apps are listed in .clever.json. As long as
+# only ONE set of CC apps exists this is fine — when prod CC apps appear,
+# this guardrail forces an explicit confirmation so dev values don't land
+# in prod by autopilot.
+if [ "$APPLY" = 1 ]; then
+  echo
+  echo "${YELLOW}⚠  clever-sync currently has no --env flag.${RST}"
+  echo "${YELLOW}   It will push values sourced from config/secrets.dev.sops.yaml${RST}"
+  echo "${YELLOW}   to the CC apps in .clever.json: ${APP_LIST[*]}${RST}"
+  echo "${YELLOW}   Confirm only if those apps should receive DEV values.${RST}"
+  read -r -p "Continue? [y/N] " _confirm
+  case "$_confirm" in
+    [yY]|[yY][eE][sS]) ;;
+    *) echo "aborted."; exit 0 ;;
+  esac
+fi
+
 global_changes=0
 global_failures=0
 

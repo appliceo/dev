@@ -46,6 +46,14 @@ Thumbs.db
 /config/local.env
 /config/clever.local.env
 
+# SOPS — encrypted prod / staging secrets stay local-only.
+# config/secrets.dev.sops.yaml IS committed (encrypted; safe to share).
+/config/secrets.prod.sops.yaml
+/config/secrets.staging.sops.yaml
+# Defensive: never commit a plaintext working copy of any secrets file.
+/config/secrets.*.yaml.dec
+/config/secrets.*.plain.yaml
+
 # Service-account / signing JSONs (Play Store, etc.) — never commit
 /keys/
 

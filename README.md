@@ -14,15 +14,19 @@ This file is the **first read** for anyone joining the project. It is the canoni
 # 1. Clone this repo into the folder you want everything under
 git clone git@github.com:appliceo/dev.git appliceo && cd appliceo
 
-# 2. Clone all sibling projects automatically (idempotent — skips ones already there;
-#    seeds .env from .env.example for each repo)
-bash bin/clone-all.sh           # use bin/clone-all.ps1 on Windows PowerShell
-                                # add --with-mobile to also pull the RN apps
+# 2. Clone all sibling projects automatically (idempotent — skips ones already there)
+bash bin/clone-all.sh           # add --with-mobile to also pull the RN apps
+                                # Windows: run from Git Bash
 
-# 3. Drop the DocuSign private key (out-of-band, not in git):
+# 3. Set up secrets (SOPS + age — see "Secrets & configuration" below)
+bin/secret.sh bootstrap         # generates your age keypair, prints your pubkey
+                                # share the pubkey with a maintainer to be granted dev access
+bin/configure.sh                # decrypts dev secrets, renders every .env and gestion-config.php
+
+# 4. Drop the DocuSign private key (out-of-band, not in git):
 #    api/keys/docusign_private.key
 
-# 4. Boot
+# 5. Boot
 docker compose up --build
 ```
 
@@ -38,6 +42,79 @@ Test user (seeded into both DBs on first startup):
 Full details, port overrides, HMR tuning and troubleshooting: `docker/README.md`.
 
 Native (non-Docker) workflow on macOS / Linux still works per project — read each project's own `README.md`.
+
+---
+
+## Secrets & configuration
+
+Secrets management is **SOPS + age** — open-source, no server, no subscription. The dev-stack monorepo is the single source of truth; sibling repos render their `.env` files from here.
+
+### How it works
+
+- **`.sops.yaml`** at the root declares which age public keys can decrypt which files.
+- **`config/secrets.dev.sops.yaml`** holds encrypted dev secrets and **is committed**. Diffs are readable (keys plaintext, values encrypted).
+- **`config/secrets.staging.sops.yaml`** and **`config/secrets.prod.sops.yaml`** are **gitignored**. Prod's canonical store is the Clever Cloud env panel; the local prod SOPS file is a working copy only.
+- **`bin/configure.sh`** decrypts dev secrets and renders every project's `.env` plus `gestion-config.php` from the templates in `config/templates/`. A single `JWT_SECRET` / `V1_AUTH_API_KEY` value flows into both `api/.env` and `appliceo-php/.env` — no manual sync, no drift possible.
+- **`bin/secret.sh`** wraps every common operation: bootstrap, edit, rotate, grant, revoke. It auto-detects Windows + Git Bash and applies the `--no-fifo` workaround.
+- A committed **pre-commit hook** (`hooks/pre-commit`, activated via `core.hooksPath`) refuses to commit `config/secrets.prod.*` or any plaintext `.sops.yaml`.
+
+### Tools you need
+
+- `age` and `age-keygen` (encryption keypair)
+- `sops` (file-level encrypt/decrypt)
+
+Install:
+
+| OS | Command |
+|---|---|
+| macOS | `brew install age sops` |
+| Windows (winget) | `winget install FiloSottile.age Mozilla.SOPS` |
+| Windows (scoop) | `scoop install age sops` |
+| Linux (Debian/Ubuntu) | `sudo apt-get install age` + sops from https://github.com/getsops/sops/releases |
+
+### Onboarding a new contributor
+
+```bash
+# On the contributor's machine
+bin/secret.sh bootstrap            # generates ~/.config/sops/age/keys.txt + prints pubkey
+
+# Maintainer adds the pubkey to .sops.yaml, then runs:
+sops updatekeys config/secrets.dev.sops.yaml   # re-encrypts to include the new recipient
+git commit + push
+
+# Contributor pulls and renders
+git pull
+bin/configure.sh                   # everything decrypts and renders
+```
+
+### Daily operations
+
+```bash
+bin/secret.sh status               # show your pubkey + which envs you can decrypt
+bin/secret.sh view dev             # decrypt to stdout (read-only)
+bin/secret.sh edit dev             # open in $EDITOR; saves re-encrypted
+bin/secret.sh rotate JWT_SECRET dev   # move current → _PREVIOUS, generate new
+```
+
+### Windows-specific notes
+
+SOPS on Windows + Git Bash needs `--no-fifo` for edit operations (known Windows bug with named pipes). `bin/secret.sh` adds the flag automatically, sets a non-cloud-synced `TMPDIR`, and cleans up temp files on exit.
+
+If you're a Windows contributor: there is a local-only `secrets-for-windows-user.md` at the monorepo root with a full setup walkthrough — ask a maintainer for it (it's intentionally gitignored).
+
+### What's still hardcoded vs. what's in SOPS
+
+| Concern | Location |
+|---|---|
+| Dev DB credentials, ports, feature flags | `config/defaults.env` + `config/profiles/<profile>.env` (committed plaintext — non-secret) |
+| Shared `JWT_SECRET`, `V1_AUTH_API_KEY`, DocuSign IDs, webhook secrets, Mailgun key, PHP Basic Auth | `config/secrets.dev.sops.yaml` (committed encrypted) |
+| Prod secrets | Clever Cloud env panel (canonical); local working copy in `config/secrets.prod.sops.yaml` (gitignored) |
+| DocuSign RSA private key | `api/keys/docusign_private.key` — out-of-band, never in git |
+| OVH WordPress `wp-config.php` | gitignored; sample at `appliceo-php/wordpress/wp-config.sample.php` |
+
+### Full plan and rotation runbook
+
+Detailed plan: `.planning/SECRETS-HARDENING-2026-05-13.md`. Covers dual-key rotation overlap (`KEY` + `KEY_PREVIOUS`), per-env Clever Cloud split, restricted Stripe keys, and the leaked-credentials remediation list.
 
 ---
 
