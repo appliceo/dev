@@ -29,7 +29,6 @@ FILES=(
   ".env"
   "api/.env"
   "docuceo/.env"
-  "appliceo-php/.env"
   "docker/php/gestion-config.php"
   "api/keys/docusign_private.key"
   "api/keys/docusign_public.key"

@@ -91,7 +91,6 @@ mappings=(
   "$TEMPLATES/dev-stack.env.tmpl|$ROOT/.env"
   "$TEMPLATES/api.env.tmpl|$ROOT/api/.env"
   "$TEMPLATES/docuceo.env.tmpl|$ROOT/docuceo/.env"
-  "$TEMPLATES/appliceo-php.env.tmpl|$ROOT/appliceo-php/.env"
   "$TEMPLATES/gestion-config.php.tmpl|$ROOT/docker/php/gestion-config.php"
 )
 

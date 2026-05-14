@@ -38,6 +38,20 @@ define('MAILGUN_API_KEY',  '${MAILGUN_API_KEY}');
 define('MAILGUN_DOMAIN',   '${MAILGUN_DOMAIN}');
 define('MAILGUN_BASE_URL', '${MAILGUN_BASE_URL}');
 
+// Shared secrets — sourced from SOPS (config/secrets.dev.sops.yaml) by
+// bin/configure.sh. JWT_SECRET must match the value in api/.env so JWTs
+// issued by api validate here. V1_AUTH_API_KEY is the bridge shared secret.
+define('JWT_SECRET',      '${JWT_SECRET}');
+define('V1_AUTH_API_KEY', '${V1_AUTH_API_KEY}');
+
+// Stripe — pk_test_* / sk_test_* / whsec_* in dev; live keys per env in SOPS.
+// STRIPE_MOCK_MODE skips real Stripe calls (CI / offline). Same publishable
+// key flows to docuceo via PUBLIC_STRIPE_PUBLISHABLE_KEY.
+define('STRIPE_PUBLIC_KEY',     '${STRIPE_PUBLIC_KEY}');
+define('STRIPE_SECRET_KEY',     '${STRIPE_SECRET_KEY}');
+define('STRIPE_WEBHOOK_SECRET', '${STRIPE_WEBHOOK_SECRET}');
+define('STRIPE_MOCK_MODE',      '${STRIPE_MOCK_MODE}');
+
 if (!defined('ENVIRONMENT')) {
     $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
     if ($host === 'localhost' || strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false || strpos($host, 'dev.appliceo.com') !== false || strpos($host, 'apache') !== false) {
