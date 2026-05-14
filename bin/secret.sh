@@ -2,9 +2,8 @@
 # Wrapper around SOPS + age for the Appliceo monorepo.
 #
 # Hybrid storage:
-#   config/secrets.dev.sops.yaml      — committed, encrypted
-#   config/secrets.staging.sops.yaml  — gitignored, local-only
-#   config/secrets.prod.sops.yaml     — gitignored HARD; refuses to be tracked
+#   config/secrets.dev.sops.yaml   — committed, encrypted
+#   config/secrets.prod.sops.yaml  — gitignored HARD; refuses to be tracked
 #
 # Subcommands:
 #   bootstrap                 install age (if missing) + generate user's age key
@@ -51,8 +50,8 @@ configure_windows_runtime() {
 
 env_file() {
   case "$1" in
-    dev|staging|prod) printf '%s/config/secrets.%s.sops.yaml' "$ROOT" "$1" ;;
-    *) echo "❌ unknown env '$1' (expected dev|staging|prod)" >&2; exit 2 ;;
+    dev|prod) printf '%s/config/secrets.%s.sops.yaml' "$ROOT" "$1" ;;
+    *) echo "❌ unknown env '$1' (expected dev|prod)" >&2; exit 2 ;;
   esac
 }
 
@@ -115,7 +114,7 @@ cmd_status() {
     echo "Your pubkey: (no key — run: $0 bootstrap)"
   fi
   echo ""
-  for env in dev staging prod; do
+  for env in dev prod; do
     local f; f=$(env_file "$env")
     if [[ -f "$f" ]]; then
       if SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops -d "$f" >/dev/null 2>&1; then

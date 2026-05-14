@@ -2,9 +2,6 @@ creation_rules:
   - path_regex: config/secrets\.dev\.sops\.yaml$
     age: >-
       age1h28jc5x2ddak8nvqn3mqaagnwcmuu8z0gldeemtxz3lt22vytgqq6vyrs8
-  - path_regex: config/secrets\.staging\.sops\.yaml$
-    age: >-
-      age1h28jc5x2ddak8nvqn3mqaagnwcmuu8z0gldeemtxz3lt22vytgqq6vyrs8
   - path_regex: config/secrets\.prod\.sops\.yaml$
     age: >-
       age1h28jc5x2ddak8nvqn3mqaagnwcmuu8z0gldeemtxz3lt22vytgqq6vyrs8

@@ -47,7 +47,7 @@ fi
 
 # ----------------------------------------------------------------------------
 # SOPS secret-file parity check.
-# Compares declared keys across config/secrets.{dev,staging,prod}.sops.yaml.
+# Compares declared keys across config/secrets.{dev,prod}.sops.yaml.
 # Skipped silently when sops binary is missing or the user has no decrypt
 # access (fresh clone before bootstrap).
 # ----------------------------------------------------------------------------
@@ -61,7 +61,7 @@ fi
 
 declare -A keys_per_sops
 sops_files=0
-for env in dev staging prod; do
+for env in dev prod; do
   f="$SECRETS_DIR/secrets.$env.sops.yaml"
   [ -f "$f" ] || continue
   decoded=$(SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops -d --output-type=dotenv "$f" 2>/dev/null || true)

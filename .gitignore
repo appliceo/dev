@@ -42,14 +42,13 @@ Thumbs.db
 .env.local
 .env.docker
 
-# Central config — user's secret overrides only (dev + Clever Cloud prod)
-/config/local.env
+# Central config — user's per-machine secret overrides for clever-sync.
 /config/clever.local.env
+/config/secrets.local.env
 
-# SOPS — encrypted prod / staging secrets stay local-only.
+# SOPS — prod secret store stays local-only.
 # config/secrets.dev.sops.yaml IS committed (encrypted; safe to share).
 /config/secrets.prod.sops.yaml
-/config/secrets.staging.sops.yaml
 # Defensive: never commit a plaintext working copy of any secrets file.
 /config/secrets.*.yaml.dec
 /config/secrets.*.plain.yaml

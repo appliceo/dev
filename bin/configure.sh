@@ -2,7 +2,7 @@
 # Render every per-project .env file + gestion/config.php from the dev-stack's
 # central config (defaults + active profile + local.env).
 # Idempotent — re-run any time. Overwrites the rendered files in place.
-# Usage:  bash bin/configure.sh [--profile=full-local|frontends-only|staging] [--check]
+# Usage:  bash bin/configure.sh [--profile=full-local] [--check]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
