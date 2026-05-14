@@ -86,6 +86,43 @@ if ! command -v envsubst >/dev/null 2>&1; then
   exit 3
 fi
 
+# Reject a rendered file before it can replace the live one.
+#   1. No surviving ${ident} placeholders. envsubst is given an uppercase-only
+#      allowlist (see grep below), so a typo like ${database_name} silently
+#      survives rendering — catch any leftover ${...} regardless of case.
+#      Caveat: envsubst replaces *unset* uppercase vars with "" (no leftover),
+#      so this check won't flag empty-substitution; the `warn` loop at the end
+#      of the script handles the must-be-set keys.
+#   2. For .php.tmpl outputs, run `php -l` against the temp. Force
+#      short_open_tag=On because the templates use `<?` and the container has
+#      it On — otherwise `php -l` parses the file as plain HTML on hosts with
+#      short_open_tag=Off and silently green-lights broken PHP.
+verify_rendered() {
+  local src="$1" tmp="$2"
+  local stray
+  stray="$(grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*\}' "$tmp" || true)"
+  if [ -n "$stray" ]; then
+    echo "  [fail]  $(basename "$src"): unsubstituted placeholders" >&2
+    printf '          %s\n' "$stray" >&2
+    return 1
+  fi
+  case "$src" in
+    *.php.tmpl)
+      if ! command -v php >/dev/null 2>&1; then
+        echo "  [warn]  php not in PATH — skipping syntax check on $(basename "$src")" >&2
+      else
+        local out
+        if ! out="$(php -d short_open_tag=On -l "$tmp" 2>&1)"; then
+          echo "  [fail]  $(basename "$src"): php -l rejected the rendered file" >&2
+          printf '          %s\n' "$out" >&2
+          return 1
+        fi
+      fi
+      ;;
+  esac
+  return 0
+}
+
 # (template, destination)
 mappings=(
   "$TEMPLATES/dev-stack.env.tmpl|$ROOT/.env"
@@ -116,8 +153,22 @@ for m in "${mappings[@]}"; do
       drift=1
     fi
   else
+    # Render to a hidden sibling, verify, then atomic-rename onto $dst. Same-dir
+    # mktemp keeps the final `mv` on one filesystem — POSIX rename(2) is atomic,
+    # so a Docker bind mount snapshots either the old file or the new one,
+    # never a half-written intermediate.
     mkdir -p "$(dirname "$dst")"
-    printf '%s\n' "$rendered" > "$dst"
+    tmp="$(mktemp "$(dirname "$dst")/.$(basename "$dst").XXXXXX")"
+    printf '%s\n' "$rendered" > "$tmp"
+    if ! verify_rendered "$src" "$tmp"; then
+      rm -f "$tmp"
+      echo "  [skip]  $dst left untouched" >&2
+      exit 4
+    fi
+    # mktemp creates 0600; promote to world-readable so non-root container
+    # users (www-data, etc.) can read the rendered config.
+    chmod 644 "$tmp"
+    mv "$tmp" "$dst"
     echo "  [write] $dst"
   fi
 done
