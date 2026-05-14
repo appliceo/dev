@@ -3,13 +3,18 @@
 # central config (defaults + clever profile + clever.local.env).
 # Per-key `clever env set` — additive, never wipes addon-injected vars.
 #
-# Usage:  bash bin/clever-sync.sh [--app=api|docuceo|all] [--apply] [--bootstrap] [--force] [--verbose]
+# Usage:  bash bin/clever-sync.sh --env=dev|prod [--app=api|docuceo|all] [--apply] [--bootstrap] [--force] [--verbose]
 #
 # Modes:
 #   (default)     Dry-run diff for all targeted apps.
 #   --apply       Show diff, prompt [y/N] per app, push if confirmed.
 #   --bootstrap   Pull secret keys from current Clever env into config/clever.local.env.
 #                 Refuses to overwrite existing file unless --force.
+#
+# --env (default: dev — fail-safe):
+#   dev   → targets appliceo-api-dev + appliceo-docuceo-dev, uses clever-dev.env profile
+#   prod  → targets appliceo-api + appliceo-docuceo, uses clever-prod.env profile,
+#           extra confirmation prompt on --apply
 #
 # Requires: clever (logged in), jq, envsubst (gettext), bash 4+.
 set -euo pipefail
@@ -23,34 +28,49 @@ ROOT="$(dirname "$SCRIPT_DIR")"
 CONFIG="$ROOT/config"
 TEMPLATES="$CONFIG/templates/clever"
 
-# ── App registry ─────────────────────────────────────────
-declare -A APPS=(
+# ── App registry — per-env ───────────────────────────────
+declare -A APPS_PROD=(
   [api]="app_84641b70-9b48-460f-883f-d9aa0c13321c"
   [api-old]="app_34a33f74-0ade-4e8b-9f77-3728aad01b85"
   [docuceo]="app_af24bab1-3f6f-41a7-b9da-a8a05694f787"
 )
+declare -A APPS_DEV=(
+  [api]="app_877e4928-9786-4541-89e2-0ab21bed5ceb"
+  [docuceo]="app_63523ebf-3e21-4e79-a4c5-0f4c305426fb"
+)
 
 # ── Parse flags ──────────────────────────────────────────
 APP_FILTER=all
+ENV_TARGET=dev   # fail-safe default — dev is much less destructive than prod
 APPLY=0
 BOOTSTRAP=0
 FORCE=0
 VERBOSE=0
 for a in "$@"; do
   case "$a" in
+    --env=*)      ENV_TARGET="${a#--env=}" ;;
     --app=*)      APP_FILTER="${a#--app=}" ;;
     --apply)      APPLY=1 ;;
     --bootstrap)  BOOTSTRAP=1 ;;
     --force)      FORCE=1 ;;
     --verbose|-v) VERBOSE=1 ;;
-    -h|--help)    sed -n '2,14p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help)    sed -n '2,18p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "${RED}unknown flag: $a${RST}" >&2; exit 2 ;;
   esac
 done
 
+case "$ENV_TARGET" in
+  dev)  declare -n APPS=APPS_DEV  ;;
+  prod) declare -n APPS=APPS_PROD ;;
+  *) echo "${RED}unknown --env: $ENV_TARGET (use dev|prod)${RST}" >&2; exit 2 ;;
+esac
+PROFILE_FILE="$CONFIG/profiles/clever-${ENV_TARGET}.env"
+
 case "$APP_FILTER" in
   all)                 APP_LIST=(api docuceo) ;;
-  api|api-old|docuceo) APP_LIST=("$APP_FILTER") ;;
+  api|api-old|docuceo) APP_LIST=("$APP_FILTER")
+                       [ "$ENV_TARGET" = "dev" ] && [ "$APP_FILTER" = "api-old" ] && {
+                         echo "${RED}api-old has no dev variant${RST}" >&2; exit 2; } ;;
   *) echo "${RED}unknown app: $APP_FILTER (use api|api-old|docuceo|all)${RST}" >&2; exit 2 ;;
 esac
 
@@ -166,8 +186,8 @@ if [ "$BOOTSTRAP" = 1 ]; then
 fi
 
 # ── Sync mode ────────────────────────────────────────────
-if [ ! -f "$CONFIG/profiles/clever.env" ]; then
-  echo "${RED}❌ Missing $CONFIG/profiles/clever.env${RST}" >&2
+if [ ! -f "$PROFILE_FILE" ]; then
+  echo "${RED}❌ Missing $PROFILE_FILE${RST}" >&2
   exit 5
 fi
 
@@ -175,7 +195,7 @@ set -a
 # shellcheck source=/dev/null
 . "$CONFIG/defaults.env"
 # shellcheck source=/dev/null
-. "$CONFIG/profiles/clever.env"
+. "$PROFILE_FILE"
 if [ -f "$CONFIG/clever.local.env" ]; then
   # shellcheck source=/dev/null
   . "$CONFIG/clever.local.env"
@@ -210,7 +230,10 @@ truncate_value() {
 
 # Per-app sync logic. Globals via name-pass would be brittle in bash —
 # do everything inline in the loop below.
-echo "${BOLD}🔧 clever-sync — appliceo${RST}"
+env_banner_color="$BLUE"
+[ "$ENV_TARGET" = "prod" ] && env_banner_color="$RED"
+echo "${BOLD}🔧 clever-sync — appliceo  [env=${env_banner_color}${ENV_TARGET}${RST}${BOLD}]${RST}"
+echo "Profile: $PROFILE_FILE"
 if [ "$APPLY" = 1 ]; then
   echo "Mode: ${BOLD}${GREEN}APPLY${RST} (will prompt before pushing each app)"
 else
@@ -218,23 +241,17 @@ else
 fi
 echo "Apps: ${APP_LIST[*]}"
 
-# Until --env dev|prod lands (Phase 5 of SECRETS-HARDENING-2026-05-13.md),
-# clever-sync pushes DEV values from config/secrets.dev.sops.yaml + the
-# rendered files to whatever CC apps are listed in .clever.json. As long as
-# only ONE set of CC apps exists this is fine — when prod CC apps appear,
-# this guardrail forces an explicit confirmation so dev values don't land
-# in prod by autopilot.
-if [ "$APPLY" = 1 ]; then
+# Extra confirmation when pushing to PROD — dev → wrong PROD app is the
+# scariest accident, so block it behind an explicit y/N.
+if [ "$APPLY" = 1 ] && [ "$ENV_TARGET" = "prod" ]; then
   echo
-  echo "${YELLOW}⚠  clever-sync currently has no --env flag.${RST}"
-  echo "${YELLOW}   It will push values sourced from config/secrets.dev.sops.yaml${RST}"
-  echo "${YELLOW}   to the CC apps in .clever.json: ${APP_LIST[*]}${RST}"
-  echo "${YELLOW}   Confirm only if those apps should receive DEV values.${RST}"
-  read -r -p "Continue? [y/N] " _confirm
-  case "$_confirm" in
-    [yY]|[yY][eE][sS]) ;;
-    *) echo "aborted."; exit 0 ;;
-  esac
+  echo "${RED}${BOLD}⚠  You are about to push to PRODUCTION CC apps.${RST}"
+  echo "${RED}   Targets: ${APP_LIST[*]} (in Appliceo org)${RST}"
+  echo "${RED}   Profile: $PROFILE_FILE${RST}"
+  read -r -p "Type 'prod' to confirm: " _confirm
+  if [ "$_confirm" != "prod" ]; then
+    echo "aborted."; exit 0
+  fi
 fi
 
 global_changes=0
@@ -280,7 +297,9 @@ for alias in "${APP_LIST[@]}"; do
     in_d=0; in_c=0
     [ -n "${desired[$k]+x}" ] && in_d=1
     [ -n "${current[$k]+x}" ] && in_c=1
-    if [ "$in_d" = 1 ] && [ -z "${desired[$k]}" ]; then
+    # Skip empties + placeholder values that exist only for check-profiles
+    # parity (e.g. __set_in_clever__ markers). Never push those.
+    if [ "$in_d" = 1 ] && { [ -z "${desired[$k]}" ] || [ "${desired[$k]}" = "__set_in_clever__" ]; }; then
       empties+=("$k")
       continue
     fi
