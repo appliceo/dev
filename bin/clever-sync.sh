@@ -196,12 +196,34 @@ set -a
 . "$CONFIG/defaults.env"
 # shellcheck source=/dev/null
 . "$PROFILE_FILE"
+
+# SOPS — canonical secret store. Same pattern as bin/configure.sh: decrypt
+# to dotenv, filter out multi-line values (those go to files via --extract,
+# not env vars), and export each key. Skipped silently if sops/age aren't
+# set up yet.
+SECRETS_FILE="$CONFIG/secrets.dev.sops.yaml"
+if [ -f "$SECRETS_FILE" ] && command -v sops >/dev/null 2>&1 \
+    && [ -r "${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" ]; then
+  while IFS= read -r line; do
+    case "$line" in
+      [A-Z_]*=*)
+        key="${line%%=*}"
+        val="${line#*=}"
+        case "$val" in
+          *'\n'*) continue ;;
+        esac
+        export "$key=$val"
+        ;;
+    esac
+  done < <(SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" \
+             sops -d --output-type=dotenv "$SECRETS_FILE" 2>/dev/null)
+fi
+
+# Local per-machine overrides — wins over SOPS for prod-specific values
+# (e.g. a prod-only JWT_SECRET that differs from the dev one in SOPS).
 if [ -f "$CONFIG/clever.local.env" ]; then
   # shellcheck source=/dev/null
   . "$CONFIG/clever.local.env"
-else
-  echo "${YELLOW}⚠  $CONFIG/clever.local.env missing — secret values will be empty.${RST}"
-  echo "${YELLOW}   Run \`bash bin/clever-sync.sh --bootstrap\` to seed it.${RST}"
 fi
 set +a
 
