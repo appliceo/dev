@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sync env vars to Clever Cloud apps (api + docuceo) from the dev-stack's
-# central config (defaults + clever profile + clever.local.env).
+# central config (defaults + clever profile + SOPS).
 # Per-key `clever env set` — additive, never wipes addon-injected vars.
 #
 # Usage:  bash bin/clever-sync.sh --env=dev|prod [--app=api|docuceo|all] [--apply] [--verbose]
@@ -15,8 +15,7 @@
 #           extra confirmation prompt on --apply
 #
 # Secrets source = config/secrets.dev.sops.yaml (SOPS-encrypted, committed).
-# Per-machine overrides for prod-specific values can go in config/secrets.local.env
-# (gitignored). Bootstrap-from-CC flow is retired — SOPS is canonical now.
+# SOPS is the single source for shared secrets across both envs.
 #
 # Requires: clever (logged in), jq, envsubst (gettext), bash 4+.
 set -euo pipefail
@@ -124,12 +123,6 @@ if [ -f "$SECRETS_FILE" ] && command -v sops >/dev/null 2>&1 \
              sops -d --output-type=dotenv "$SECRETS_FILE" 2>/dev/null)
 fi
 
-# Local per-machine overrides — wins over SOPS for prod-specific values
-# (e.g. a prod-only JWT_SECRET that differs from the dev one in SOPS).
-if [ -f "$CONFIG/clever.local.env" ]; then
-  # shellcheck source=/dev/null
-  . "$CONFIG/clever.local.env"
-fi
 set +a
 
 # DocuSign key: read PEM, base64-encode, export as DOCUSIGN_PRIVATE_KEY for envsubst.
