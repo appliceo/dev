@@ -44,6 +44,11 @@ define('MAILGUN_BASE_URL', '${MAILGUN_BASE_URL}');
 define('JWT_SECRET',      '${JWT_SECRET}');
 define('V1_AUTH_API_KEY', '${V1_AUTH_API_KEY}');
 
+// Rotation slots — populated during a key rotation (empty otherwise).
+// Verifiers accept the previous value as a fallback during the overlap window.
+define('JWT_SECRET_PREVIOUS',      '${JWT_SECRET_PREVIOUS}');
+define('V1_AUTH_API_KEY_PREVIOUS', '${V1_AUTH_API_KEY_PREVIOUS}');
+
 // Stripe — pk_test_* / sk_test_* / whsec_* in dev; live keys per env in SOPS.
 // STRIPE_MOCK_MODE skips real Stripe calls (CI / offline). Same publishable
 // key flows to docuceo via PUBLIC_STRIPE_PUBLISHABLE_KEY.
