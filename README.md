@@ -6,6 +6,10 @@ This file is the **first read** for anyone joining the project. It is the canoni
 
 > **Note:** this folder is the **dev stack** repo — only the Docker compose + scripts for running everything in containers. Each sub-project listed below is its own independent git repo, cloned as a sibling folder inside this one and ignored by this repo's `.gitignore`.
 
+> **Returning contributor with an existing clone?** See [ONBOARDING-EXISTING-CLONE.md](./ONBOARDING-EXISTING-CLONE.md) — pull + reconfigure + restart, with the common failure modes called out.
+> **First time on Windows?** See [ONBOARDING-WINDOWS.md](./ONBOARDING-WINDOWS.md) — full step-by-step from blank machine to running stack.
+> **Daily scoreboard of open work:** [TODO.md](./TODO.md) (local-only).
+
 ---
 
 ## Quick start — Docker (recommended for Windows)
@@ -100,7 +104,7 @@ bin/secret.sh rotate JWT_SECRET dev   # move current → _PREVIOUS, generate new
 
 SOPS on Windows + Git Bash needs `--no-fifo` for edit operations (known Windows bug with named pipes). `bin/secret.sh` adds the flag automatically, sets a non-cloud-synced `TMPDIR`, and cleans up temp files on exit.
 
-If you're a Windows contributor: there is a local-only `secrets-for-windows-user.md` at the monorepo root with a full setup walkthrough — ask a maintainer for it (it's intentionally gitignored).
+Full Windows setup walkthrough: [ONBOARDING-WINDOWS.md](./ONBOARDING-WINDOWS.md) — shell choice, package-manager install, Dropbox/OneDrive hazard, troubleshooting.
 
 ### What's still hardcoded vs. what's in SOPS
 
@@ -112,9 +116,9 @@ If you're a Windows contributor: there is a local-only `secrets-for-windows-user
 | DocuSign RSA private key | `api/keys/docusign_private.key` — out-of-band, never in git |
 | OVH WordPress `wp-config.php` | gitignored; sample at `appliceo-php/wordpress/wp-config.sample.php` |
 
-### Full plan and rotation runbook
+### Dual-key rotation
 
-Detailed plan: `.planning/SECRETS-HARDENING-2026-05-13.md`. Covers dual-key rotation overlap (`KEY` + `KEY_PREVIOUS`), per-env Clever Cloud split, restricted Stripe keys, and the leaked-credentials remediation list.
+Phase 1–3 of the secrets-hardening plan shipped between 2026-05-13 and 2026-05-14: SOPS plumbing, PHP config consolidation, and dual-key verify fallback (`KEY` + `KEY_PREVIOUS`) all live in `api/` and `appliceo-php/`. The only remaining step — rotation day itself, where new values get pushed into both SOPS files and the Clever Cloud env panel — lives as an active item in [TODO.md](./TODO.md). Historical design doc archived at `.planning/archive/SECRETS-HARDENING-2026-05-13.md`.
 
 ---
 
@@ -127,8 +131,10 @@ Detailed plan: `.planning/SECRETS-HARDENING-2026-05-13.md`. Covers dual-key rota
 | `api/` | Fastify v5, PostgreSQL + Drizzle, Swagger | **v1.0 shipped** | Signing API + auth service. DocuSign-backed envelope creation, state, webhooks. JWT auth with V1 PHP fallback. **Account/identity = canonical source of truth here**; PHP `ap_users` is legacy fallback. |
 | `lease-config/` | Pure TS, Zod 4 | **Stable** | Shared lease types/enums/validation. 9 lease types, 42 enums, V1 adapter (`fromV1` / `toV1`). |
 | `ui/` | React 19, Headless UI (Catalyst pattern), TailwindCSS 4 | **Stable** | Shared UI library: `ThemeProvider`, form components, design tokens, icon system. |
-| `docuceo/` | Astro 6, React 19, TailwindCSS 4, JWT auth | **In development** | Modern frontend shell. Astro SSR with React islands. Auth via api, SSR proxy to PHP. Lease editor source lives in-tree at `docuceo/src/lease-editor/`. |
+| `docuceo/` | Astro 6, React 19, TailwindCSS 4, JWT auth | **In development** | Modern frontend shell. Astro SSR with React islands. Auth via api (direct CORS), SSR proxy to PHP for lease data only. Lease editor source lives in-tree at `docuceo/src/lease-editor/`. |
 | `EtatDesLieux/` | Expo SDK 54, RN 0.81, Ignite 11.3, WatermelonDB, MMKV | **In development** | Mobile app for property inspection reports (photos, rooms, offline-first). |
+| `rapporteur/` | React frontend, PG-direct | **Early dev** | Reporting frontend, queries PG directly. Newer addition. |
+| `e2e/` | Playwright | **Scaffolding live** | Cross-project end-to-end harness at monorepo root. Specs pending. Local-docker + cc-dev profiles configured. |
 | `appliceo-design/` | HTML, CSS reference assets | **Reference** | Color palette, design token reference, examples. |
 
 ### Default branches
@@ -307,7 +313,8 @@ Env-var name varies by stack:
 | `docuceo` | Clever Cloud (Node.js) | Astro SSR. Server-side proxies to PHP and api. |
 | `appliceo-node` (V2) | Clever Cloud (target) | Not yet deployed. Managed Postgres 16. |
 | MySQL | OVH (V1 production) | Database `appliceo_php`. |
-| PostgreSQL | Clever Cloud managed | Shared by `api` + `docuceo` (and target for `appliceo-node`). |
+| PostgreSQL (prod) | Clever Cloud managed | Hosts `api` tables (`ap_sig_*`, `ap_auth_users`). Prod-tier sizing — DEV plan's per-role connection cap is too tight for the migrator + pg-pool + zero-downtime deploy overlap. |
+| PostgreSQL (dev) | Local Docker only | Dev stack uses the in-compose Postgres. **No shared CC PG addon for dev** (decision 2026-05-14). |
 
 ---
 
@@ -363,3 +370,5 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for code-style rules, commit convention
 - [lease-config/README.md](./lease-config/README.md)
 - [docuceo/README.md](./docuceo/README.md)
 - [EtatDesLieux/README.md](./EtatDesLieux/README.md)
+- [rapporteur/README.md](./rapporteur/README.md)
+- [e2e/README.md](./e2e/README.md)
