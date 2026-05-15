@@ -126,7 +126,7 @@ Phase 1–3 of the secrets-hardening plan shipped between 2026-05-13 and 2026-05
 
 | Directory | Stack | Status | Description |
 |-----------|-------|--------|-------------|
-| `appliceo-php/` | PHP (no framework), jQuery, MySQL, Docker | **Production (V1)** | Current live app. Lease management, tenants, properties, PDF generation. **Signed-lease workflow migrated to docuceo — PHP signed-lease code is FROZEN.** Branch: `develop`. |
+| `appliceo-php/` | PHP (no framework), jQuery, MySQL, Docker | **Production (V1)** | Current live app. Lease management, tenants, properties, PDF generation. **Signed-lease workflow DELETED** — only migration history remains; `is_signed` / `signing_date` / `signing_place` columns pending audit. Branch: `develop`. |
 | `appliceo-node/` | Next.js 16, React 19, Drizzle ORM, PostgreSQL 16, NextAuth v5, TailwindCSS 4 | **In development (V2)** | Full rewrite. Own PostgreSQL DB, English schema. Active code in `frontend/`. Branch: `develop`. **Not yet wired into the dev-stack docker-compose** — run locally with `npm run dev`. |
 | `api/` | Fastify v5, PostgreSQL + Drizzle, Swagger | **v1.0 shipped** | Signing API + auth service. DocuSign-backed envelope creation, state, webhooks. JWT auth with V1 PHP fallback. **Account/identity = canonical source of truth here**; PHP `ap_users` is legacy fallback. |
 | `lease-config/` | Pure TS, Zod 4 | **Stable** | Shared lease types/enums/validation. 9 lease types, 42 enums, V1 adapter (`fromV1` / `toV1`). |
@@ -320,7 +320,7 @@ Env-var name varies by stack:
 
 ## Integrations
 
-- **DocuSign** — electronic lease signing (JWT auth with RSA keys), via `api`. Yousign provider exists in `api/` but is deprecated since 2026-04-28; deletion queued for api v1.1.
+- **DocuSign** — electronic lease signing (JWT auth with RSA keys), via `api`. Sole signing provider; the Yousign provider code was removed 2026-05-15. `SIGNING_PROVIDER` env var stays for future-provider extensibility but is enforced to `docusign` at startup.
 - **Stripe** — subscription management (V1 has `ap_formules` + `ap_users_formules`). Forward plan: absorb into `api/` so all clients consume one source.
 - **AR24** (eIDAS LRE) — registered mail delivery; planned to live in `api/` alongside DocuSign / Stripe.
 - **Email** — transactional emails (notices, receipts, invoices, revision alerts).
