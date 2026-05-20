@@ -14,8 +14,11 @@
 #   prod  → targets appliceo-api + appliceo-docuceo, uses clever-prod.env profile,
 #           extra confirmation prompt on --apply
 #
-# Secrets source = config/secrets.dev.sops.yaml (SOPS-encrypted, committed).
-# SOPS is the single source for shared secrets across both envs.
+# Secrets source = config/secrets.<env>.sops.yaml (SOPS-encrypted).
+#   dev:  secrets.dev.sops.yaml  (committed encrypted)
+#   prod: secrets.prod.sops.yaml (gitignored hard; bootstrap via `bin/secret.sh seed-prod`)
+# Hard-fails when --env=prod targets a missing prod SOPS — silently degrading
+# to "no secrets pushed" is a footgun on prod.
 #
 # Requires: clever (logged in), jq, envsubst (gettext), bash 4+.
 set -euo pipefail
@@ -101,11 +104,17 @@ set -a
 # shellcheck source=/dev/null
 . "$PROFILE_FILE"
 
-# SOPS — canonical secret store. Same pattern as bin/configure.sh: decrypt
-# to dotenv, filter out multi-line values (those go to files via --extract,
+# SOPS — canonical secret store, picked by --env. Same pattern as bin/configure.sh:
+# decrypt to dotenv, filter out multi-line values (those go to files via --extract,
 # not env vars), and export each key. Skipped silently if sops/age aren't
-# set up yet.
-SECRETS_FILE="$CONFIG/secrets.dev.sops.yaml"
+# set up yet — EXCEPT on prod, where a missing prod SOPS is a hard fail.
+SECRETS_FILE="$CONFIG/secrets.$ENV_TARGET.sops.yaml"
+if [ "$ENV_TARGET" = "prod" ] && [ ! -f "$SECRETS_FILE" ]; then
+  echo "${RED}❌ $SECRETS_FILE missing.${RST}" >&2
+  echo "${RED}   Run: bin/secret.sh seed-prod    # creates the prod SOPS skeleton${RST}" >&2
+  echo "${RED}   Then: bin/secret.sh edit prod   # populate values${RST}" >&2
+  exit 4
+fi
 if [ -f "$SECRETS_FILE" ] && command -v sops >/dev/null 2>&1 \
     && [ -r "${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" ]; then
   while IFS= read -r line; do

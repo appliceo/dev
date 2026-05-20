@@ -10,6 +10,8 @@
 #   status                    show key + which envs are accessible
 #   edit <env>                open encrypted file in $EDITOR (Windows: --no-fifo)
 #   view <env>                decrypt to stdout (read-only)
+#   seed-prod                 create config/secrets.prod.sops.yaml with the dev keyset
+#                             (empty values + OVH_PROD_DB_* added), ready for `edit prod`
 #   rotate <KEY> <env>        move KEY -> KEY_PREVIOUS, generate new, save
 #   grant <name> <pubkey> <env>   add recipient to .sops.yaml + re-encrypt
 #   revoke <name> <env>       remove recipient from .sops.yaml + re-encrypt
@@ -155,6 +157,130 @@ cmd_view() {
   SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops -d "$f"
 }
 
+cmd_seed_prod() {
+  require_tools
+  require_age_key
+  configure_windows_runtime
+  assert_prod_not_tracked
+
+  local dev_f prod_f
+  dev_f=$(env_file dev)
+  prod_f=$(env_file prod)
+
+  if [[ -f "$prod_f" ]]; then
+    echo "🛑 $prod_f already exists." >&2
+    echo "   To re-seed: delete it first (rm $prod_f), then re-run seed-prod." >&2
+    exit 1
+  fi
+  if [[ ! -f "$dev_f" ]]; then
+    echo "❌ $dev_f missing — nothing to template the keyset from." >&2
+    exit 1
+  fi
+
+  # Sectioned skeleton — mirror of the dev SOPS layout so a cross-env
+  # `diff <(secret.sh view dev) <(secret.sh view prod)` stays readable.
+  # The dev file is the canonical structure; if you reorganize it, update
+  # this function to match.
+  # macOS mktemp puts the random suffix at the END regardless of template,
+  # so build the .yaml-suffixed path in two steps (sops needs the extension
+  # to pick the YAML codec).
+  local tmp_base tmp
+  tmp_base=$(mktemp -t appliceo-prod-seed.XXXXXX)
+  tmp="$tmp_base.yaml"
+  mv "$tmp_base" "$tmp"
+
+  cat > "$tmp" <<'SKELETON'
+# Appliceo PROD secrets — encrypted with SOPS+age (managed by bin/secret.sh)
+#
+# This file is gitignored hard. Source of truth for prod values lives in
+# Clever Cloud (api/docuceo apps) + OVH (gestion-config.php).
+# Decrypt:  bin/secret.sh view prod
+# Edit:     bin/secret.sh edit prod
+#
+# Section order mirrors secrets.dev.sops.yaml — keep them aligned so a
+# `diff <(bin/secret.sh view dev) <(bin/secret.sh view prod)` stays readable.
+
+# ─── Internal bridge secrets (api ↔ appliceo-php) ───
+# JWT_SECRET must match the value compiled into gestion-config.php so JWTs
+# issued by api validate in PHP. V1_AUTH_API_KEY is the static shared secret
+# for the PHP→api auth-fallback bridge. *_PREVIOUS slots hold the prior
+# value during a rotation overlap window (empty when not rotating).
+JWT_SECRET: ""
+JWT_SECRET_PREVIOUS: ""
+V1_AUTH_API_KEY: ""
+V1_AUTH_API_KEY_PREVIOUS: ""
+
+# ─── HTTP Basic Auth gates ───
+# PHP_BASIC_AUTH:  user:pass that api uses to reach appliceo-php behind the
+#                  .htaccess gate (dev.appliceo.com — prod is open).
+# DEV_BASIC_AUTH:  docuceo dev-host guard (middleware skips on docuceo.com).
+PHP_BASIC_AUTH: ""
+DEV_BASIC_AUTH: ""
+
+# ─── DocuSign (e-signature provider) ───
+# JWT app-grant credentials + webhook HMAC.
+# DOCUSIGN_PRIVATE_KEY is a multi-line RSA PEM; configure.sh extracts it to
+# api/keys/docusign_private.key at render time.
+DOCUSIGN_ACCOUNT_ID: ""
+DOCUSIGN_INTEGRATION_KEY: ""
+DOCUSIGN_USER_ID: ""
+DOCUSIGN_PRIVATE_KEY: ""
+DOCUSIGN_WEBHOOK_SECRET: ""
+
+# ─── Stripe (subscriptions + payments) ───
+# Dev: pk_test_* / sk_test_* / whsec_test_*  (STRIPE_MOCK_MODE bypasses in CI)
+# Prod: pk_live_* / sk_live_* / whsec_live_*
+STRIPE_PUBLIC_KEY: ""
+STRIPE_SECRET_KEY: ""
+STRIPE_WEBHOOK_SECRET: ""
+
+# ─── Mailgun (transactional email) ───
+# Dev historically empty (stub mailer drops to logs). Real domain-scoped
+# key gets minted on rotation day; same domain (mg.appliceo.com) for both
+# envs unless we split MX later (parked decision).
+MAILGUN_API_KEY: ""
+
+# ─── OVH MySQL credentials (TIER-NAMESPACED — exclusive per env) ───
+# Dev SOPS gets OVH_DEV_DB_*; prod SOPS gets OVH_PROD_DB_*. The split is
+# intentional: bin/check-profiles.sh skips OVH_(DEV|PROD)_* in the cross-env
+# SOPS parity check. Consumed by config/profiles/php-ovh-prod.env at
+# render time via ${OVH_PROD_DB_*} references.
+OVH_PROD_DB_HOST: ""
+OVH_PROD_DB_NAME: ""
+OVH_PROD_DB_USER: ""
+OVH_PROD_DB_PASSWORD: ""
+SKELETON
+
+  # Encrypt. sops-from-the-repo-root picks the recipient via .sops.yaml's
+  # `config/secrets.prod.sops.yaml$` rule once we move into place. But we
+  # encrypt in /tmp first to avoid leaving plaintext at the SOPS path if
+  # encryption fails — so pass --age explicitly + --config /dev/null to skip
+  # the rule lookup that wouldn't match our temp path.
+  local age_recipient
+  age_recipient=$(grep -oE 'age1[a-z0-9]+' "$SOPS_YAML" | head -1)
+  if [[ -z "$age_recipient" ]]; then
+    echo "❌ no age recipient found in $SOPS_YAML — bootstrap first" >&2
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  if ! SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops --encrypt --config /dev/null \
+         --age "$age_recipient" --in-place "$tmp"; then
+    echo "❌ sops encrypt failed; cleaning up plaintext skeleton" >&2
+    rm -f "$tmp"
+    exit 1
+  fi
+
+  mv "$tmp" "$prod_f"
+
+  echo "✓ created $prod_f (encrypted, sectioned skeleton mirroring dev)"
+  echo
+  echo "Next steps:"
+  echo "  1. bin/secret.sh edit prod   # fill values"
+  echo "  2. bin/check-profiles.sh     # verify SOPS dev/prod parity"
+  echo "  3. bin/clever-sync.sh --env=prod   # diff against Clever Cloud apps"
+}
+
 cmd_rotate() {
   local key="${1:?usage: secret.sh rotate <KEY> <env>}"
   local env="${2:?usage: secret.sh rotate <KEY> <env>}"
@@ -219,6 +345,7 @@ Commands:
   status                       show key + decrypt access per env
   edit <env>                   edit encrypted file in \$EDITOR
   view <env>                   decrypt to stdout (read-only)
+  seed-prod                    create encrypted prod SOPS with dev keyset + OVH_PROD_DB_*
   rotate <KEY> <env>           move KEY -> KEY_PREVIOUS + generate new
   grant <name> <pubkey> <env>  add recipient (see TODO inside)
   revoke <name> <env>          remove recipient (see TODO inside)
@@ -235,6 +362,7 @@ main() {
     status)    cmd_status "$@" ;;
     edit)      cmd_edit "$@" ;;
     view)      cmd_view "$@" ;;
+    seed-prod) cmd_seed_prod "$@" ;;
     rotate)    cmd_rotate "$@" ;;
     grant)     cmd_grant "$@" ;;
     revoke)    cmd_revoke "$@" ;;

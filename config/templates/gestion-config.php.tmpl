@@ -5,12 +5,12 @@
 define('DATABASE_NAME',     '${MYSQL_DATABASE}');
 define('DATABASE_USER_NAME','${MYSQL_USER}');
 define('DATABASE_PASSWORD', '${MYSQL_PASSWORD}');
-define('DATABASE_HOST_NAME','mysql');
+define('DATABASE_HOST_NAME','${DB_HOST}');
 define('DATABASE_CHARSET',  'utf8');
 define('DB_PREFIX',         'ap_');
 
-define('ABS_PATH_SITE', '/var/www/html');
-define('ABS_PATH',      '/var/www/html/gestion');
+define('ABS_PATH_SITE', '${ABS_PATH_SITE}');
+define('ABS_PATH',      '${ABS_PATH_GESTION}');
 
 define('DOMAIN',    '${APP_DOMAIN}');
 define('SUBDOMAIN', '');
@@ -71,10 +71,10 @@ if (!defined('DEBUG_MODE'))     define('DEBUG_MODE',     ENVIRONMENT !== 'produc
 if (!defined('DISPLAY_ERRORS')) define('DISPLAY_ERRORS', ENVIRONMENT !== 'production');
 
 define('MAX_FILE_SIZE', 67108864);
-define('UPLOAD_PATH',   '/var/www/html/gestion/uploads/');
+define('UPLOAD_PATH',   '${ABS_PATH_GESTION}/uploads/');
 
-define('LOG_PATH',  '/var/www/html/gestion/logs/');
-define('ERROR_LOG', '/var/www/html/gestion/logs/error.log');
+define('LOG_PATH',  '${ABS_PATH_GESTION}/logs/');
+define('ERROR_LOG', '${ABS_PATH_GESTION}/logs/error.log');
 
 define('MAX_GUARANTORS_PER_LEASE', 4);
 

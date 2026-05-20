@@ -2,7 +2,15 @@
 # Render every per-project .env file + gestion/config.php from the dev-stack's
 # central config (defaults + active profile + local.env).
 # Idempotent — re-run any time. Overwrites the rendered files in place.
-# Usage:  bash bin/configure.sh [--profile=full-local] [--check]
+#
+# Usage:
+#   bash bin/configure.sh [--profile=full-local] [--check]
+#
+# Render a single template (used by bin/php-deploy-config.sh):
+#   bash bin/configure.sh --profile=php-ovh-dev \
+#        --secrets-env=dev \
+#        --render-only=gestion-config.php.tmpl \
+#        --out=path/to/config.php
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -10,24 +18,43 @@ ROOT="$(dirname "$SCRIPT_DIR")"
 CONFIG="$ROOT/config"
 TEMPLATES="$CONFIG/templates"
 
+PROFILE=full-local
+CHECK=0
+RENDER_ONLY=""    # when set, render only this single template basename
+OUT=""            # explicit output path (used with --render-only)
+SECRETS_ENV=dev   # which SOPS file to source (dev|prod)
+for a in "$@"; do
+  case "$a" in
+    --profile=*)       PROFILE="${a#--profile=}" ;;
+    --check)           CHECK=1 ;;
+    --render-only=*)   RENDER_ONLY="${a#--render-only=}" ;;
+    --out=*)           OUT="${a#--out=}" ;;
+    --secrets-env=*)   SECRETS_ENV="${a#--secrets-env=}" ;;
+    *) echo "unknown flag: $a" >&2; exit 2 ;;
+  esac
+done
+
+case "$SECRETS_ENV" in
+  dev|prod) ;;
+  *) echo "--secrets-env must be dev or prod (got: $SECRETS_ENV)" >&2; exit 2 ;;
+esac
+
+if [ -n "$RENDER_ONLY" ] && [ -z "$OUT" ]; then
+  echo "--render-only requires --out=<path>" >&2
+  exit 2
+fi
+
 # Self-install the committed git hooks (idempotent — sets core.hooksPath once).
-if [ -d "$ROOT/hooks" ] && [ -x "$ROOT/hooks/pre-commit" ]; then
+# Skipped in render-only mode — that path is meant for narrow, scriptable use
+# (e.g. bin/php-deploy-config.sh) and shouldn't mutate repo state as a side
+# effect.
+if [ -z "$RENDER_ONLY" ] && [ -d "$ROOT/hooks" ] && [ -x "$ROOT/hooks/pre-commit" ]; then
   current_hooks=$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)
   if [ "$current_hooks" != "hooks" ]; then
     git -C "$ROOT" config core.hooksPath hooks
     echo "[hooks] core.hooksPath set to hooks/ (pre-commit guardrails active)"
   fi
 fi
-
-PROFILE=full-local
-CHECK=0
-for a in "$@"; do
-  case "$a" in
-    --profile=*) PROFILE="${a#--profile=}" ;;
-    --check)     CHECK=1 ;;
-    *) echo "unknown flag: $a" >&2; exit 2 ;;
-  esac
-done
 
 PROFILE_FILE="$CONFIG/profiles/$PROFILE.env"
 if [ ! -f "$PROFILE_FILE" ]; then
@@ -37,20 +64,23 @@ if [ ! -f "$PROFILE_FILE" ]; then
   exit 2
 fi
 
-# Source defaults → profile → SOPS-encrypted dev secrets → local.env override.
+# Source defaults → SOPS-encrypted dev secrets → profile → local.env override.
+# SOPS sourced BEFORE profile so profile assignments can reference SOPS-injected
+# vars (e.g. php-ovh-dev.env: MYSQL_USER=${OVH_DEV_DB_USER}). Trade-off: profile
+# values now win over SOPS for the same key — that pattern isn't used today.
 # set -a auto-exports each sourced file's KEY=VALUE assignments.
 set -a
 # shellcheck source=/dev/null
 . "$CONFIG/defaults.env"
-# shellcheck source=/dev/null
-. "$PROFILE_FILE"
 
-# Inject SOPS-decrypted dev secrets, if available. Skipped gracefully when:
+# Inject SOPS-decrypted secrets for the chosen env, if available. Skipped
+# gracefully when:
 #   - sops binary not installed (fresh clone)
 #   - user has no age key yet (pre-bootstrap)
-#   - secrets file missing
+#   - secrets file missing (default --secrets-env=dev; prod is gitignored
+#     until `bin/secret.sh seed-prod` is run)
 # That keeps a fresh clone runnable up to the warning at the bottom.
-SECRETS_FILE="$CONFIG/secrets.dev.sops.yaml"
+SECRETS_FILE="$CONFIG/secrets.$SECRETS_ENV.sops.yaml"
 if [ -f "$SECRETS_FILE" ] && command -v sops >/dev/null 2>&1 \
     && [ -r "${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" ]; then
   # Decrypt to dotenv, then export each KEY=value line directly via `export`.
@@ -74,6 +104,9 @@ if [ -f "$SECRETS_FILE" ] && command -v sops >/dev/null 2>&1 \
   done < <(SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-$HOME/.config/sops/age/keys.txt}" \
              sops -d --output-type=dotenv "$SECRETS_FILE" 2>/dev/null)
 fi
+
+# shellcheck source=/dev/null
+. "$PROFILE_FILE"
 
 if [ -f "$CONFIG/local.env" ]; then
   # shellcheck source=/dev/null
@@ -122,6 +155,32 @@ verify_rendered() {
   esac
   return 0
 }
+
+# Single-template short-circuit. Used by bin/php-deploy-config.sh to render
+# just gestion-config.php.tmpl into a staging dir for OVH rsync. Skips the
+# full mappings loop, the multi-line key extraction, the public-key copy,
+# and the final warning banner — all of which are dev-stack concerns.
+if [ -n "$RENDER_ONLY" ]; then
+  src="$TEMPLATES/$RENDER_ONLY"
+  if [ ! -f "$src" ]; then
+    echo "render-only: template not found: $src" >&2
+    exit 4
+  fi
+  vars="$(grep -oE '\$\{[A-Z_][A-Z0-9_]*\}' "$src" | sort -u | tr '\n' ' ')"
+  rendered="$(envsubst "$vars" < "$src")"
+  mkdir -p "$(dirname "$OUT")"
+  tmp="$(mktemp "$(dirname "$OUT")/.$(basename "$OUT").XXXXXX")"
+  printf '%s\n' "$rendered" > "$tmp"
+  if ! verify_rendered "$src" "$tmp"; then
+    rm -f "$tmp"
+    echo "render-only: verification failed; $OUT left untouched" >&2
+    exit 4
+  fi
+  chmod 644 "$tmp"
+  mv "$tmp" "$OUT"
+  echo "  [write] $OUT  (profile=$PROFILE, secrets-env=$SECRETS_ENV)"
+  exit 0
+fi
 
 # (template, destination)
 mappings=(
@@ -207,10 +266,9 @@ render_sops_key_to_file DOCUSIGN_PRIVATE_KEY "$ROOT/api/keys/docusign_private.ke
 
 # ---------------------------------------------------------------------------
 # Public keys — not secret, kept plaintext per env at config/keys/<env>/.
-# Picks "dev" by default (matches the SOPS file currently sourced above).
-# Per-profile env mapping comes in Phase 5 (prod cutover).
+# Tracks $SECRETS_ENV (the --secrets-env flag, dev by default) so dev/prod
+# profiles pull their matching keys.
 # ---------------------------------------------------------------------------
-SECRETS_ENV=dev
 copy_public_key() {
   local name="$1" dest="$2"
   local src="$CONFIG/keys/$SECRETS_ENV/$name"

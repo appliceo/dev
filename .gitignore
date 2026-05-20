@@ -58,3 +58,4 @@ test-results
 
 # Rendered by bin/configure.sh — contains decrypted secrets; never commit.
 docker/php/gestion-config.php
+local.env
